@@ -21,5 +21,5 @@ setup(
         "Topic :: Scientific/Engineering"
     ],
     python_requires='>=3.8',
-    install_requires=["numpy","colorednoise"]
+    install_requires=["numpy","colorednoise","scipy"]
 )
