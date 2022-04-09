@@ -28,5 +28,5 @@ jobs:
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
     - name: Test with pytest
       run: |
-        pip install pytest
+        pip install pytest pytest-cov
         cd && mkdir for_test && cd for_test && pytest --pyargs nsdmd --doctest-modules --cov-report term-missing --cov=nsdmd
