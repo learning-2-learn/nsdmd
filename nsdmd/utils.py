@@ -34,6 +34,42 @@ def demean_mat(mat):
     mat_m = mat - np.mean(mat, axis=-1)[:,:,None]
     return(mat_m)
 
+def moving_average_dim(ar, size, dim):
+    """
+    Calculates the moving average along dimension
+    
+    Parameters
+    --------------
+    ar: array to be averaged
+    size: size of window
+    dim: dimension to calculate over
+    
+    Returns
+    --------------
+    Moving average along dim
+    """
+    br = np.apply_along_axis(_moving_average, dim, ar, size)
+    return(br)
+
+def _moving_average(a, n):
+    """
+    Calculates the moving average of an array.
+    Function taken from Jaime here:
+    https://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
+    
+    Parameters
+    --------------
+    a: array to be averaged
+    n: size of window
+    
+    Returns
+    --------------
+    Moving average
+    """
+    ret = np.cumsum(a, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1:] / n
+
 ###################### For simulations
 
 def make_network(freq, t_len, phi_amp, phi_phase, t_step=0.001, time_mod=0, coupling=0):

@@ -156,6 +156,113 @@ def exact_Bf(x, soln):
     return(B, f)
 
 
+def exact_f_from_Bf(B, f, variance_thresh=0.01):
+    '''
+    Gets the f_hat from the estimated f and B matrix in the exact method
+    
+    Parameters
+    ----------
+    B : B matrix from exact method
+    f : approximate f from exact method
+    
+    Returns
+    -------
+    f_hat : f_hat from the exact method
+    '''
+    f_hat = np.empty(f.shape)
+    for t in range(f.shape[1]):
+        f_sub = f[:,t]
+        B_sub = B[:,:,t].T
+        u,s,vh = np.linalg.svd(B_sub)
+        idx = s**2 / (s@s) > variance_thresh
+        B_inv = vh.T[:,idx] @ np.diag(1./s[idx]) @ u.T[idx]
+        f_hat[:,t] = B_inv @ f_sub
+    return(f_hat)
+
+def get_reconstruction(soln, f):
+    '''
+    Reconstructs x from the S and f
+    
+    Parameters
+    ----------
+    soln : solutions with shape (number of modes, number of channels, time)
+    f : global modulation f with shape (number of modes, time)
+    
+    Returns
+    -------
+    x_rec : reconstructed data matrix
+    '''
+    x_rec = np.zeros((soln.shape[1], soln.shape[2]))
+    for r in range(len(soln)):
+        temp = soln[r,:,:] * f[r][None,:]
+        x_rec = x_rec + temp
+    return(x_rec)
+
+def get_reconstruction_error(x_true, x_rec):
+    '''
+    Calculates the reconstruction error from the original and reconstructed data matricies
+    
+    Parameters
+    ----------
+    x_true : true data matrix
+    x_rec : reconstructed data matrix
+    
+    Returns
+    -------
+    error : error computed with cosine distance metric
+    '''
+    error = utils.cos_dist(x_rec.reshape((-1)), x_true.reshape((-1)))
+    return(error)
+
+def exact_f_greedy(B, f, soln, x, N, verbose=True):
+    '''
+    Computes f with a greedy forward elimination algorithm for every round of modes removed
+    Uses the exact method
+    
+    Parameters
+    ----------
+    B : B matrix from exact method
+    f : estimated f from exact method
+    soln : solutions that are indexed the same as B and f
+    x : original data matrix
+    N : amount of averaging on either side of point interested in
+    
+    Returns
+    -------
+    idx_all : list of indicies, corresponding to each run of the greedy algorithm
+    total_error : error for each run of the greedy algorithm
+    '''
+    idx_all = []
+
+    f_hat = exact_f_from_Bf(B,f)
+    f_hat[:,N:-N] = utils.moving_average_dim(f_hat,2*N+1,1)
+    f_hat[f_hat<0] = 0
+    x_rec = get_reconstruction(soln, f_hat)
+    total_error = [get_reconstruction_error(x, x_rec)]
+
+    for i in range(f.shape[0]):
+        print(str(i) + '/' + str(f.shape[0]))
+        if i==0:
+            idx = np.arange(f.shape[0])
+        else:
+            idx = idx[np.arange(len(idx))!=np.argmax(error)]
+        idx_all.append(idx)
+
+        if(len(idx)>1):
+            error = np.empty(len(idx))
+            for j, r in enumerate(idx):
+                idx_sub = idx[idx!=r]
+                f_sub = f[idx_sub]
+                B_sub = np.array([b[idx_sub] for b in B[idx_sub]])
+                f_hat = exact_f_from_Bf(B_sub,f_sub)
+                f_hat[:,N:-N] = utils.moving_average_dim(f_hat,2*N+1,1)
+                f_hat[f_hat<0] = 0
+                x_rec = get_reconstruction(soln[idx_sub], f_hat)
+                error[j] = get_reconstruction_error(x, x_rec)
+            total_error.append(np.max(error))
+    return(idx_all, total_error)
+
+
 
 ###################Implicit Functions
 
