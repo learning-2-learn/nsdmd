@@ -48,6 +48,58 @@ def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
     return(freqs, phis, windows)
 
 
+def get_soln(freqs, phis, t, offsets):
+    '''
+    Gets the full solution from frequencies and phis
+    
+    Parameters
+    ----------
+    freqs : the frequencies with shape (number of windows x number of modes)
+    phis : the phis with shape (number of windows x number of channels x number of modes)
+    t : the time snapshots
+    offsets : the temporal offset of each window
+    
+    Returns
+    -------
+    soln : the extended solutions with shape (number of windows x number of modes x number of channels x time)
+    '''
+    soln = np.empty((freqs.shape[0], freqs.shape[1], phis.shape[1], len(t)))
+    for r in range(freqs.shape[-1]):
+        for i in range(len(freqs)):
+            temp = np.exp(2*np.pi*1j*((t-offsets[i]) * freqs[i,r]))
+            temp2 = phis[i,:,r][:,None]*temp
+            soln[i,r] = temp2.real
+    
+    return(soln)
+
+
+def get_t_delay_from_soln(freqs, phis, t, t_step, offsets):
+    '''
+    Predicts temporal delays between channels from the solutions
+    
+    Parameters
+    ----------
+    freqs : the frequencies with shape (number of windows x number of modes)
+    phis : the phis with shape (number of windows x number of channels x number of modes)
+    t : the time snapshots
+    t_step : the temporal difference between snapshots (or 1 over sampling rate)
+    offsets : the temporal offset of each window
+    
+    Returns
+    -------
+    t_delay : the predicted time delays with shape (number of windows x number of modes x number of channels)
+    '''
+    t_delay = np.empty((freqs.shape[0], freqs.shape[1], phis.shape[1]), dtype=int)
+    for r in range(freqs.shape[-1]):
+        for i in range(len(freqs)):
+            temp = np.exp(2*np.pi*1j*((t-offsets[i]) * freqs[i,r]))
+            temp2 = phis[i,:,r][:,None]*temp
+            temp3 = np.round(np.angle(temp2[:,0]) / (2*np.pi*freqs[i,r]) / t_step)
+            t_delay[i,r] = np.array([int(ch) for ch in temp3])
+    
+    return(t_delay)
+
+
 def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
     '''
     Groups all modes based on frequencies and phi amplitudes.

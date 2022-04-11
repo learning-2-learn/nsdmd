@@ -1,6 +1,8 @@
 import numpy as np
 from nsdmd.nsdmd import opt_dmd_win
 from nsdmd.nsdmd import group_by_similarity
+from nsdmd.nsdmd import get_soln
+from nsdmd.nsdmd import get_t_delay_from_soln
 
 def test_opt_dmd_win():
     #freqs are 1,-1,2,-2
@@ -51,8 +53,29 @@ def test_group_by_similarity():
     ans_5 = [[[0,1]],[[0],[1]]]
     assert res_5==ans_5, 'Case where phi amp polarity is different'
     
+
+def test_get_soln():
+    freqs = np.array([[1,-1],[1,-1]])
+    phi = np.array([[[1,1],[1,1],[1,1]],[[-1,-1],[-1,-1],[-1,-1]]])
+    t = np.arange(1000)*0.001
+    offsets = np.array([0,.5])
     
+    res = get_soln(freqs,phi,t,offsets)
+    ans = np.ones((2,2,3))[:,:,:,None] * np.cos(np.arange(1000)*0.001*2*np.pi)[None,None,None,:]
+    assert np.allclose(res, ans)
     
+def test_get_t_delay_from_soln():
+    freqs = np.array([[1,-1],[1,-1]])
+    phi = np.array([[[np.exp(1j*0),np.exp(1j*0)],[np.exp(1j*.1),np.exp(1j*.1)],\
+                     [np.exp(1j*.2),np.exp(1j*.2)]],\
+                    [[-np.exp(1j*0),-np.exp(1j*0)],[-np.exp(1j*.1),-np.exp(1j*.1)],\
+                     [-np.exp(1j*.2),-np.exp(1j*.2)]]])
+    t = np.arange(1000)*0.001
+    t_step = 0.001
+    offsets = np.array([0,.5])
     
-    
-    
+    res = get_t_delay_from_soln(freqs,phi,t,t_step,offsets)
+    a = int(np.round(1000*0.1/2/np.pi))
+    ans = np.array([[[0,a,2*a],[0,-a,-2*a]],[[0,a,2*a],[0,-a,-2*a]]])
+    assert np.allclose(res, ans)
+
