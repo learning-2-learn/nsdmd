@@ -5,6 +5,7 @@ from nsdmd.utils import demean_mat
 from nsdmd.utils import make_network
 from nsdmd.utils import create_decay
 from nsdmd.utils import add_noise
+from nsdmd.utils import moving_average_dim
 
 def test_cos_dist():
     ans_1 = 0.0
@@ -37,3 +38,12 @@ def test_create_decay():
 def test_add_noise():
     #TODO will probably check the slope of resulting spectrum against value put in
     assert False, "TODO"
+    
+def test_moving_average_dim():
+    x = np.ones(3)[:,None] * np.arange(10)[None,:]
+    
+    ans = np.ones(3)[:,None] * np.arange(1,9)[None,:]
+    res = moving_average_dim(x, 3, 1)
+    
+    assert np.allclose(ans, res)
+    
