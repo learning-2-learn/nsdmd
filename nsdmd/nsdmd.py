@@ -20,7 +20,7 @@ def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
     phis : complex spatial modes with shape (number of windows, number of channels, rank)
     windows : exact windows used, for testing purposes
     '''
-    windows = np.array([np.arange(i,i+500) for i in np.arange(0, x.shape[-1]-500+1, 100)])
+    windows = np.array([np.arange(i,i+w_len) for i in np.arange(0, x.shape[-1]-w_len+1, stride)])
     freqs = np.empty((len(windows), rank))
     phis = np.empty((len(windows), len(x), rank), dtype=complex)
     
