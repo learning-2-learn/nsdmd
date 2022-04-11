@@ -135,6 +135,26 @@ def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
     return(groups)
 
 
+def exact_Bf(x, soln):
+    '''
+    Gets B and f approximate with the exact method approach
+    
+    Parameters
+    ----------
+    x : the data with shape (number of channels, time)
+    soln : solutions with shape (number of modes, number of channels, time)
+    
+    Returns
+    -------
+    B : B matrix from exact method
+    f : approximate f from exact method
+    '''
+    top = np.sum(soln*x[None,:,:], axis=1)
+    bot = np.sum(soln**2, axis=1)
+    f = top / bot
+    B = np.sum(soln[:,None] * soln[None,:], axis=2) / bot[:,None]
+    return(B, f)
+
 
 
 ###################Implicit Functions

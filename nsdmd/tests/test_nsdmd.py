@@ -3,6 +3,7 @@ from nsdmd.nsdmd import opt_dmd_win
 from nsdmd.nsdmd import group_by_similarity
 from nsdmd.nsdmd import get_soln
 from nsdmd.nsdmd import get_t_delay_from_soln
+from nsdmd.nsdmd import exact_Bf
 
 def test_opt_dmd_win():
     #freqs are 1,-1,2,-2
@@ -78,4 +79,18 @@ def test_get_t_delay_from_soln():
     a = int(np.round(1000*0.1/2/np.pi))
     ans = np.array([[[0,a,2*a],[0,-a,-2*a]],[[0,a,2*a],[0,-a,-2*a]]])
     assert np.allclose(res, ans)
+    
+    
+def test_exact_Bf():
+    x1 = np.arange(1,2)[:,None]*np.cos(np.arange(4)*0.001*2*np.pi)[None,:]
+    x2 = np.arange(2,1,-1)[:,None]*np.cos(np.arange(4)*0.001*2*np.pi)[None,:]
+    x = x1 + x2
+    s = np.vstack((x1[None,:,:], x2[None,:,:]))
+    
+    res_B, res_f = exact_Bf(x, s)
+    ans_B = np.array([[[1,1,1,1],[2,2,2,2]], [[0.5,0.5,0.5,0.5],[1,1,1,1]]])
+    ans_f = np.array([[3,3,3,3],[1.5,1.5,1.5,1.5]])
+    
+    assert np.allclose(res_B, ans_B), "B is wrong"
+    assert np.allclose(res_f, ans_f), "f is wrong"
 
