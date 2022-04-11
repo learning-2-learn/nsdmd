@@ -1,5 +1,6 @@
 import numpy as np
 from nsdmd import optdmd
+from nsdmd import utils
 
 def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
     '''
@@ -45,3 +46,96 @@ def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
         phis[i] = dmd.modes
 
     return(freqs, phis, windows)
+
+
+def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
+    '''
+    Groups all modes based on frequencies and phi amplitudes.
+    Note : does NOT look at phi phases (TODO)
+    Note : modes are expected to be in order of pairs, where each pair represents the positive and negative frequency.
+        This function cannot currently handle non-pairs
+    Note : currently cannot control threshold of polarity
+    
+    Parameters
+    ----------
+    freqs : all frequencies with shape (number of windows x number of modes)
+    phis : all phis with shape (number of windows x number of recordings x number of modes)
+    thresh_freq : frequency threshold. Any pair of frequencies with a smaller difference is 'similar'
+    thresh_phi_amp : phi_amp threshold. Any pair with larger value is 'similar'
+        value is computed by cosine distance metric
+        
+    Returns
+    -------
+    groups : list of groups with length (number of modes)
+        even modes (0,2,4,...) contain groups (lists) of consecutive similar solutions
+        odd modes (1,3,5,...) contain a list of solutions (of paired modes) that are significantly different than counterparts
+        
+    '''
+    groups = []
+    for i in range(0,freqs.shape[1]):
+        if i%2==0:
+            groups.append(_group_by_freq_phi(freqs[:,i], np.abs(phis[:,:,i]), \
+                                             thresh_freq=thresh_freq, thresh_phi_amp=thresh_phi_amp))
+        else:
+            temp1 = _group_by_polarity(freqs[:,i-1], freqs[:,i], 'freq_pol')
+            temp2 = _group_by_polarity(np.abs(phis[:,:,i-1]), np.abs(phis[:,:,i]), 'phi_amp_pol')
+            groups.append([[g] for g in np.unique(np.hstack((temp1,temp2)))])
+    return(groups)
+
+
+
+
+###################Implicit Functions
+
+def _group_by_polarity(x1, x2, dtype, thresh=None):
+    '''
+    forms groups were the com (comparisons) are comparing objects with opposite polarity (e.g. +/- freq)
+    '''
+    if dtype=='freq_pol':
+        com = np.abs(x1 + x2)
+        if thresh==None:
+            thresh = 0.05
+    elif dtype=='phi_amp_pol':
+        com = np.empty((len(x1)))
+        for i in range(len(x1)):
+            com[i] = 1 - utils.cos_dist(x1[i], x2[i])
+        if thresh==None:
+            thresh = 0.02
+    elif dtype=='phi_angle_pol':
+        print('todo')
+        return([])
+    return(np.argwhere(com>thresh)[:,0])
+
+def _group_by_freq_phi(freq, phi_amp, thresh_freq=0.2, thresh_phi_amp=0.95):
+    '''
+    forms groups where the com (comparisons) are comparing consecutive things
+    '''
+    groups = []
+    
+    group_num = -1
+    for i in range(len(freq)-1):
+        if group_num == -1:
+            if np.abs(freq[i+1] - freq[i]) < thresh_freq and utils.cos_dist(phi_amp[i], phi_amp[i+1]) > thresh_phi_amp:
+                groups.append([i, i+1])
+                in_group = True
+            else:
+                groups.append([i])
+                in_group = False
+            group_num += 1
+        else:
+            if np.abs(freq[i+1] - freq[i]) < thresh_freq and utils.cos_dist(phi_amp[i], phi_amp[i+1]) > thresh_phi_amp:
+                if in_group:
+                    groups[group_num].append(i+1)
+                else:
+                    groups.append([i, i+1])
+                    group_num += 1
+                    in_group = True
+            else:
+                if in_group:
+                    in_group = False
+                else:
+                    groups.append([i])
+                    group_num += 1
+    if not in_group:
+        groups.append([i+1])
+    return(groups)
