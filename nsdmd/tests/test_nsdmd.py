@@ -8,6 +8,10 @@ from nsdmd.nsdmd import exact_f_from_Bf
 from nsdmd.nsdmd import get_reconstruction
 from nsdmd.nsdmd import get_reconstruction_error
 from nsdmd.nsdmd import exact_f_greedy
+from nsdmd.nsdmd import grad_f_init
+from nsdmd.nsdmd import grad_f_grad_loss
+from nsdmd.nsdmd import grad_f
+from nsdmd.nsdmd import grad_f_amp
 
 def test_opt_dmd_win():
     #freqs are 1,-1,2,-2
@@ -140,3 +144,70 @@ def test_exact_f_greedy():
     assert res_i[1][0]==0 or res_i[1][0]==1, "indexing issue"
     assert np.allclose(res_e, np.ones((2)), 0.0001)
     
+def test_grad_f_init():
+    x1 = np.arange(1,2)[:,None]*np.ones(4)[None,:]
+    x2 = np.arange(2,1,-1)[:,None]*np.ones(4)[None,:]
+    x = x1 + x2
+    s = np.vstack((x1[None,:,:], x2[None,:,:]))
+    beta = 1
+    N = 1
+    
+    res = grad_f_init(x, s, beta, N)
+    ans = np.array([[1.5,1.5,1.5,1.5], [1.2,1.2,1.2,1.2]])
+    
+    assert np.allclose(res, ans)
+    
+def test_grad_f_grad_loss():
+    x1 = np.arange(1,2)[:,None]*np.ones(4)[None,:]
+    x2 = np.arange(2,1,-1)[:,None]*np.ones(4)[None,:]
+    x = x1 + x2
+    s = np.vstack((x1[None,:,:], x2[None,:,:]))
+    f = np.ones((2,4))/2
+    
+    res_l2 = grad_f_grad_loss(f, x, s, 0, 0, 1)
+    ans_l2 = np.array([[-1.5,-1.5,-1.5,-1.5], [-3,-3,-3,-3]])
+    assert np.allclose(res_l2, ans_l2), "L2 problem"
+    
+    x1 = np.arange(1,2)[:,None]*np.ones(4)[None,:]
+    x2 = np.arange(2,1,-1)[:,None]*np.ones(4)[None,:]
+    x = x1 + x2
+    s = np.vstack((x1[None,:,:], x2[None,:,:]))
+    f = np.ones((2,4))
+    
+    res_alpha = grad_f_grad_loss(f, x, s, 1, 0, 1)
+    ans_alpha = np.ones((2,4))
+    assert np.allclose(res_alpha, ans_alpha), "alpha problem, may also be L2 problem"
+    
+    x1 = np.arange(1,2)[:,None]*np.ones(6)[None,:]
+    x2 = np.arange(2,1,-1)[:,None]*np.ones(6)[None,:]
+    x = (x1 + x2)*np.arange(6)[None,:]
+    s = np.vstack((x1[None,:,:], x2[None,:,:]))
+    f = np.ones((2,6))*np.arange(6)[None,:]
+    
+    res_beta1 = grad_f_grad_loss(f, x, s, 0, 1, 0)
+    res_beta2 = grad_f_grad_loss(f, x, s, 0, 1, 2)
+    ans_beta1 = np.zeros((2,6))
+    ans_beta2 = np.array([[-3,-2,0,0,2,3], [-3,-2,0,0,2,3]])
+    assert np.allclose(res_beta1, ans_beta1), "trivial beta problem, may also be L2 problem"
+    assert np.allclose(res_beta2, ans_beta2), "beta problem, may also be L2 problem"
+
+def test_grad_f():
+    x1 = np.arange(1,3)[:,None]*np.cos(np.arange(400)*0.001*2*np.pi)[None,:]
+    x2 = np.arange(3,1,-1)[:,None]*np.cos(np.arange(400)*0.001*2*np.pi*2)[None,:]
+    x = x1 + x2
+    s = np.vstack((x1[None,:,:], x2[None,:,:]))
+    
+    res = grad_f(x, s, 0,0.1,20, 0.1, 1000)
+    ans = np.ones((2,400))
+    assert np.allclose(res, ans, 0.001), "Problem with gradient descent"
+    
+def test_grad_f_amp():
+    x1 = np.arange(1,3)[:,None]*np.cos(np.arange(400)*0.001*2*np.pi)[None,:]
+    x2 = np.arange(3,1,-1)[:,None]*np.cos(np.arange(400)*0.001*2*np.pi*2)[None,:]
+    x = x1 + x2
+    s = np.vstack((x1[None,:,:], x2[None,:,:]))
+    f = np.ones((2,400))/2
+    
+    res = grad_f_amp(f, s, x)
+    ans = np.ones((2,400))
+    assert np.allclose(res, ans), "Problem with amplitude fixes"

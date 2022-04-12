@@ -2,6 +2,8 @@ import numpy as np
 from nsdmd import optdmd
 from nsdmd import utils
 
+################## OPT-DMD
+
 def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
     '''
     Computes OPT-DMD for windows defined by the length and stride
@@ -47,6 +49,7 @@ def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
 
     return(freqs, phis, windows)
 
+##################### Processing steps
 
 def get_soln(freqs, phis, t, offsets):
     '''
@@ -134,6 +137,7 @@ def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
             groups.append([[g] for g in np.unique(np.hstack((temp1,temp2)))])
     return(groups)
 
+###################### Exact Method
 
 def exact_Bf(x, soln):
     '''
@@ -178,41 +182,6 @@ def exact_f_from_Bf(B, f, variance_thresh=0.01):
         B_inv = vh.T[:,idx] @ np.diag(1./s[idx]) @ u.T[idx]
         f_hat[:,t] = B_inv @ f_sub
     return(f_hat)
-
-def get_reconstruction(soln, f):
-    '''
-    Reconstructs x from the S and f
-    
-    Parameters
-    ----------
-    soln : solutions with shape (number of modes, number of channels, time)
-    f : global modulation f with shape (number of modes, time)
-    
-    Returns
-    -------
-    x_rec : reconstructed data matrix
-    '''
-    x_rec = np.zeros((soln.shape[1], soln.shape[2]))
-    for r in range(len(soln)):
-        temp = soln[r,:,:] * f[r][None,:]
-        x_rec = x_rec + temp
-    return(x_rec)
-
-def get_reconstruction_error(x_true, x_rec):
-    '''
-    Calculates the reconstruction error from the original and reconstructed data matricies
-    
-    Parameters
-    ----------
-    x_true : true data matrix
-    x_rec : reconstructed data matrix
-    
-    Returns
-    -------
-    error : error computed with cosine distance metric
-    '''
-    error = utils.cos_dist(x_rec.reshape((-1)), x_true.reshape((-1)))
-    return(error)
 
 def exact_f_greedy(B, f, soln, x, N, verbose=True):
     '''
@@ -261,6 +230,155 @@ def exact_f_greedy(B, f, soln, x, N, verbose=True):
                 error[j] = get_reconstruction_error(x, x_rec)
             total_error.append(np.max(error))
     return(idx_all, total_error)
+
+###################### Gradient Descent
+
+def grad_f_init(x, soln, beta, N):
+    '''
+    Finds the initial guess for f based on the gradient descent method
+    Note : assumes beta is constant, unlike in paper (TODO)
+    
+    Parameters
+    ----------
+    x : original data matrix with shape (number of channels, time)
+    soln : solutions with shape (number of modes, number of channels, time)
+    beta : number indicating strength of temporal smoothing
+    N : number of timepoints to smooth over
+    
+    Returns
+    -------
+    f_init : intial guess for f
+    '''
+    f_init = np.empty((soln.shape[0], soln.shape[-1]))
+    for r in range(soln.shape[0]):
+        for t in range(soln.shape[2]):
+            top = (soln[r,:,t] @ x[:,t])
+            bot = ((soln[r,:,t] @ soln[r,:,t])) + beta*N
+            f_init[r,t] = top / bot
+    return(f_init)
+
+def grad_f_grad_loss(f, x, soln, alpha, beta, N):
+    '''
+    Finds the gradient of the loss function in the gradient descent method
+    Note : assumes beta is constant, unlike in paper (TODO)
+    Note : also doesn't do anything at the edge, maybe should implement reflection or something?? (TODO)
+    
+    Parameters
+    ----------
+    f : current guess of f with shape (number of modes, time)
+    x : original data with shape (number of channels, time)
+    soln : solutions with shape (number of modes, number of channels, time)
+    alpha : number indicating strength of l1 regularization
+    beta : number indicating strength of temporal smoothing
+    N : number of timepoints to smooth over
+    
+    Returns
+    -------
+    dLdf : gradient of loss function
+    '''
+    Y = np.matmul(np.transpose(soln, [2,1,0]), np.transpose(f)[:,:,None])[:,:,0] #time, chan
+    Y2 = Y - x.T
+    l2_term = np.matmul(np.transpose(soln, [2,0,1]), Y2[:,:,None])[:,:,0].T
+    
+    alpha_term = np.ones((f.shape)) * alpha
+    alpha_term[f<0] = -alpha_term[f<0]
+    
+    beta_term = np.zeros((f.shape))
+    for i in range(1,N+1):
+        beta_term[:,:-i] = beta_term[:,:-i] - beta*(f[:,i:]-f[:,:-i])
+        beta_term[:,i:] =  beta_term[:,i:]  + beta*(f[:,i:]-f[:,:-i])
+    
+    dLdf = l2_term + alpha_term + beta_term
+    return(dLdf)
+
+def grad_f(x, soln, alpha, beta, N, lr, maxiter):
+    '''
+    Performs gradient descent to approximate f
+    Note : assumes beta is constant, unlike in paper (TODO)
+    
+    Parameters
+    ----------
+    x : original data matrix with shape (number of channels, time)
+    soln : solutions with shape (number of modes, number of channels, time)
+    alpha : number indicating strength of l1 regularization
+    beta : number indicating strength of temporal smoothing
+    N : number of timepoints to smooth over
+    lr : learning rate
+    maxiter : total number of iterations
+    
+    Returns
+    -------
+    f : approximation of global modulation f
+    '''
+    f = grad_f_init(x, soln, beta, N)
+    f[f<0]=0
+    
+    for i in range(maxiter):
+        dLdf = grad_f_grad_loss(f, x, soln, alpha, beta, N)
+        f = f - lr*dLdf
+        f[f<0]=0
+        f[:,N:-N] = utils.moving_average_dim(f,2*N+1,1)
+        f[:,:N] = np.mean(f[:,:N],axis=1)[:,None]
+        f[:,-N:] = np.mean(f[:,-N:],axis=1)[:,None]
+            
+    return(f)
+
+def grad_f_amp(f, soln, x):
+    '''
+    Fixes overall amplitude of f hat in the gradient descent method
+    
+    Parameters
+    ----------
+    f : computed solution for f with shape (number of modes, time)
+    soln : solutions with shape (number of modes, number of channels, time)
+    x : data matrix with shape (number of channels, time)
+    
+    Returns
+    -------
+    f_hat : global modulation f with fixed amplitude
+    '''
+    norm,_,_,_ = np.linalg.lstsq((f[:,None,:] * soln).reshape((len(f),-1)).T, x.reshape((-1)),rcond=None)
+    f_hat = f * norm[:,None]
+    return(f_hat)
+
+###################### Reconstruction
+
+def get_reconstruction(soln, f):
+    '''
+    Reconstructs x from the S and f
+    
+    Parameters
+    ----------
+    soln : solutions with shape (number of modes, number of channels, time)
+    f : global modulation f with shape (number of modes, time)
+    
+    Returns
+    -------
+    x_rec : reconstructed data matrix
+    '''
+    x_rec = np.zeros((soln.shape[1], soln.shape[2]))
+    for r in range(len(soln)):
+        temp = soln[r,:,:] * f[r][None,:]
+        x_rec = x_rec + temp
+    return(x_rec)
+
+def get_reconstruction_error(x_true, x_rec):
+    '''
+    Calculates the reconstruction error from the original and reconstructed data matricies
+    
+    Parameters
+    ----------
+    x_true : true data matrix
+    x_rec : reconstructed data matrix
+    
+    Returns
+    -------
+    error : error computed with cosine distance metric
+    '''
+    error = utils.cos_dist(x_rec.reshape((-1)), x_true.reshape((-1)))
+    return(error)
+
+
 
 
 
