@@ -1,5 +1,7 @@
 import numpy as np
 import math
+from scipy.signal import welch
+from scipy.stats import linregress
 from nsdmd.utils import cos_dist
 from nsdmd.utils import demean_mat
 from nsdmd.utils import make_network
@@ -36,8 +38,27 @@ def test_create_decay():
     assert np.all(np.isclose(ans_2, res_2))
     
 def test_add_noise():
-    #TODO will probably check the slope of resulting spectrum against value put in
-    assert False, "TODO"
+    x = np.ones((1,100000))
+    std = 0.1
+    power = 0
+
+    y = add_noise(x, std, power)
+    f, p = welch(y[0], 1000)
+    reg = linregress(np.log(f[1:-1]), np.log(p[1:-1]))
+    res = reg[0]
+    ans = 0
+    assert np.abs(res - ans) < 0.1, "Problem with noise at power = 0"
+    
+    x = np.ones((1,100000))
+    std = 0.001
+    power = -2
+
+    y = add_noise(x, std, power)
+    f, p = welch(y[0], 1000)
+    reg = linregress(np.log(f[1:-1]), np.log(p[1:-1]))
+    res = reg[0]
+    ans = -2
+    assert np.abs(res - ans) < 0.1, "Problem with noise at power = -2"
     
 def test_moving_average_dim():
     x = np.ones(3)[:,None] * np.arange(10)[None,:]
