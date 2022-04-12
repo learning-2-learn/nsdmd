@@ -29,13 +29,13 @@ class NSDMD():
         self.freqs_ = f
         self.phis_ = p
         self.windows_ = w
-        return
+        return self
     
     def set_opt_values(self, freqs, phis, windows):
         self.freqs_ = freqs
         self.phis_ = phis
         self.windows_ = windows
-        return
+        return self
         
     def fit_ns(self, x, t):
         soln = get_soln(self.freqs_, self.phis_, t, t[self.windows_[:,0]])
@@ -54,20 +54,27 @@ class NSDMD():
         
         self.idxs_ = [sub_idx[idx] for idx in idx_all]
         self.errors_ = total_error
-        return
+        return self
     
-    def transform(self, x, t, idx_num):
+    def fit_f(self, x, t, idx_num):
         soln = get_soln(self.freqs_, self.phis_, t, t[self.windows_[:,0]])
         soln_r = np.transpose(soln, (1,0,2,3)).reshape((-1, soln.shape[2], soln.shape[3]))
         idx = self.idxs_[idx_num]
+        self.idx_ = idx
         f_hat = grad_f(x, soln_r[idx], self.grad_alpha, self.grad_beta, \
                              self.grad_N, self.grad_lr, self.grad_maxiter)
         f_hat = grad_f_amp(f_hat, soln_r[idx], x)
         
         self.f_hat_ = f_hat
-        self.freq_hat = self.freqs_.T.reshape((-1))[idx]
-        self.phi_hat = np.transpose(self.phis_, (2,0,1)).reshape((-1, self.phis_.shape[1]))[idx]
-        return(f_hat)
+        self.freq_hat_ = self.freqs_.T.reshape((-1))[idx]
+        self.phi_hat_ = np.transpose(self.phis_, (2,0,1)).reshape((-1, self.phis_.shape[1]))[idx]
+        return self
+    
+    def transform(self, x, t):
+        soln = get_soln(self.freqs_, self.phis_, t, t[self.windows_[:,0]])
+        soln_r = np.transpose(soln, (1,0,2,3)).reshape((-1, soln.shape[2], soln.shape[3]))
+        x_rec = get_reconstruction(soln_r[self.idx_], self.f_hat_)
+        return x_rec
 
 
 ################## OPT-DMD
