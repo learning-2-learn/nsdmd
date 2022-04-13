@@ -47,7 +47,7 @@ class NSDMD():
             for g in groups:
                 idx = np.random.choice(g)
                 freqs_sub.append(self.freqs_[:,j][idx])
-                phi_sub.append(self.phis_[:,:,j][idx])
+                phi_sub.append(self.phis_[:,j,:][idx])
                 offsets_sub.append(t[self.windows_[idx,0]])
         self.freqs_red_ = np.array(freqs_sub)
         self.phis_red_ = np.array(phi_sub)
@@ -99,12 +99,12 @@ def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
     Returns
     -------
     freqs : frequencies of modes with shape (number of windows, rank)
-    phis : complex spatial modes with shape (number of windows, number of channels, rank)
+    phis : complex spatial modes with shape (number of windows, rank, number of channels)
     windows : exact windows used, for testing purposes
     '''
     windows = np.array([np.arange(i,i+w_len) for i in np.arange(0, x.shape[-1]-w_len+1, stride)])
     freqs = np.empty((len(windows), rank))
-    phis = np.empty((len(windows), len(x), rank), dtype=complex)
+    phis = np.empty((len(windows), rank, len(x)), dtype=complex)
     
     for i, window in enumerate(windows):
         x_temp = x[:,window]
@@ -124,7 +124,7 @@ def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
         dmd.fit(verbose=False, eigs_guess=guess)
         
         freqs[i] = np.array(dmd.eigs).imag / 2. / np.pi
-        phis[i] = dmd.modes
+        phis[i] = dmd.modes.T
 
     return(freqs, phis, windows)
 
@@ -154,6 +154,7 @@ def get_soln(freqs, phis, t, offsets):
     return(soln)
 
 
+#Fix this
 def get_t_delay_from_soln(freqs, phis, t, t_step, offsets):
     '''
     Predicts temporal delays between channels from the solutions
@@ -191,8 +192,8 @@ def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
     
     Parameters
     ----------
-    freqs : all frequencies with shape (number of windows x number of modes)
-    phis : all phis with shape (number of windows x number of recordings x number of modes)
+    freqs : all frequencies with shape (number of windows, number of modes)
+    phis : all phis with shape (number of windows, number of modes, number of recordings)
     thresh_freq : frequency threshold. Any pair of frequencies with a smaller difference is 'similar'
     thresh_phi_amp : phi_amp threshold. Any pair with larger value is 'similar'
         value is computed by cosine distance metric
@@ -207,11 +208,11 @@ def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
     groups = []
     for i in range(0,freqs.shape[1]):
         if i%2==0:
-            groups.append(_group_by_freq_phi(freqs[:,i], np.abs(phis[:,:,i]), \
+            groups.append(_group_by_freq_phi(freqs[:,i], np.abs(phis[:,i,:]), \
                                              thresh_freq=thresh_freq, thresh_phi_amp=thresh_phi_amp))
         else:
             temp1 = _group_by_polarity(freqs[:,i-1], freqs[:,i], 'freq_pol')
-            temp2 = _group_by_polarity(np.abs(phis[:,:,i-1]), np.abs(phis[:,:,i]), 'phi_amp_pol')
+            temp2 = _group_by_polarity(np.abs(phis[:,i-1,:]), np.abs(phis[:,i,:]), 'phi_amp_pol')
             groups.append([[g] for g in np.unique(np.hstack((temp1,temp2)))])
     return(groups)
 

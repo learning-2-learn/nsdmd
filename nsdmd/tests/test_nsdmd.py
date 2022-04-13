@@ -28,15 +28,15 @@ def test_opt_dmd_win():
     ans_w = np.array([np.arange(500), np.arange(1000,1500)])
     
     assert np.allclose(res_f, ans_f, 0.001) # freq
-    assert np.allclose(np.abs(res_p)[:,:,0], np.abs(res_p)[:,:,1]) # check polarity of phi
-    assert np.allclose(np.angle(res_p)[0,:,0], np.ones(99)*np.angle(res_p)[0,0,0]) # phase
-    assert np.allclose(np.abs(res_p)[0,:,0], ans_p, 0.0001) # amplitude
+    assert np.allclose(np.abs(res_p)[:,0,:], np.abs(res_p)[:,1,:]) # check polarity of phi
+    assert np.allclose(np.angle(res_p)[0,0,:], np.ones(99)*np.angle(res_p)[0,0,0]) # phase
+    assert np.allclose(np.abs(res_p)[0,0,:], ans_p, 0.0001) # amplitude
     assert np.allclose(res_w, ans_w) # windows
     
 def test_group_by_similarity():
     freqs = np.array([[1,-1],[2,-2],[2.1,-2.1],[1,-1]])
-    phis =  np.array([[[1,1],[2,2],[3,3]],[[2,2],[2,2],[2,2]],\
-                      [[3.1,3.1],[3.1,3.1],[3.1,3.1]],[[1,1],[2,2],[3,3]]])
+    phis =  np.array([[[1,2,3],[1,2,3]],[[2,2,2],[2,2,2]],\
+                      [[3.1,3.1,3.1],[3.1,3.1,3.1]], [[1,2,3],[1,2,3]]])
     
     res_1 = group_by_similarity(freqs,phis,thresh_freq=4,thresh_phi_amp=0.1)
     ans_1 = [[[0,1,2,3]],[]]
@@ -57,7 +57,7 @@ def test_group_by_similarity():
     assert res_4==ans_4, 'Case where freq polarity is different'
     
     freqs = np.array([[1,-1],[1,-1]])
-    phis =  np.array([[[1,2],[1,5],[1,2]],[[1,2],[1,5],[1,2]]])
+    phis =  np.array([[[1,1,1],[2,5,2]],[[1,1,1],[2,5,2]]])
     res_5 = group_by_similarity(freqs,phis,thresh_freq=4,thresh_phi_amp=0.1)
     ans_5 = [[[0,1]],[[0],[1]]]
     assert res_5==ans_5, 'Case where phi amp polarity is different'
