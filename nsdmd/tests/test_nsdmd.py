@@ -64,13 +64,13 @@ def test_group_by_similarity():
     
 
 def test_get_soln():
-    freqs = np.array([[1,-1],[1,-1]])
-    phi = np.array([[[1,1],[1,1],[1,1]],[[-1,-1],[-1,-1],[-1,-1]]])
+    freqs = np.array([1,-1])
+    phi = np.array([[1,1,1], [-1,-1,-1]])
     t = np.arange(1000)*0.001
     offsets = np.array([0,.5])
     
     res = get_soln(freqs,phi,t,offsets)
-    ans = np.ones((2,2,3))[:,:,:,None] * np.cos(np.arange(1000)*0.001*2*np.pi)[None,None,None,:]
+    ans = np.ones((2,3))[:,:,None] * np.cos(np.arange(1000)*0.001*2*np.pi)[None,None,:]
     assert np.allclose(res, ans)
     
 def test_get_t_delay_from_soln():
