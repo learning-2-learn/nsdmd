@@ -36,44 +36,47 @@ class NSDMD():
         self.phis_ = phis
         self.windows_ = windows
         return self
-        
+
     def fit_ns(self, x, t):
-        soln = get_soln(self.freqs_, self.phis_, t, t[self.windows_[:,0]])
-        soln_r = np.transpose(soln, (1,0,2,3)).reshape((-1, soln.shape[2], soln.shape[3]))
-        
         group_idx = group_by_similarity(self.freqs_, self.phis_, self.sim_thresh_freq, self.sim_thresh_phi_amp)
-        sub_idx = []
-        for i, groups in enumerate(group_idx):
+        
+        freqs_sub = []
+        phi_sub = []
+        offsets_sub = []
+        for j, groups in enumerate(group_idx):
             for g in groups:
-                sub_idx.append(np.random.choice(g) + i*(group_idx[-2][-1][-1]+1))
-        sub_idx = np.array(sub_idx)
-        sub_idx = sub_idx[np.sum(np.sum(soln_r[sub_idx], axis=2), axis=1)!=0] #In case of bad trivial solutions
+                idx = np.random.choice(g)
+                freqs_sub.append(self.freqs_[:,j][idx])
+                phi_sub.append(self.phis_[:,:,j][idx])
+                offsets_sub.append(t[self.windows_[idx,0]])
+        self.freqs_red_ = np.array(freqs_sub)
+        self.phis_red_ = np.array(phi_sub)
+        self.offs_red_ = np.array(offsets_sub)
         
-        B,f = exact_Bf(x, soln_r[sub_idx])
-        idx_all, total_error = exact_f_greedy(B,f,soln_r[sub_idx],x,self.exact_N, self.exact_var_thresh, self.verbose)
+        soln = get_soln(self.freqs_red_, self.phis_red_, t, self.offs_red_)
         
-        self.idxs_ = [sub_idx[idx] for idx in idx_all]
-        self.errors_ = total_error
+        B,f = exact_Bf(x, soln)
+        self.idxs_, self.errors_ = exact_f_greedy(B,f,soln,x,self.exact_N, self.exact_var_thresh, self.verbose)
+        
         return self
     
     def fit_f(self, x, t, idx_num):
-        soln = get_soln(self.freqs_, self.phis_, t, t[self.windows_[:,0]])
-        soln_r = np.transpose(soln, (1,0,2,3)).reshape((-1, soln.shape[2], soln.shape[3]))
-        idx = self.idxs_[idx_num]
-        self.idx_ = idx
-        f_hat = grad_f(x, soln_r[idx], self.grad_alpha, self.grad_beta, \
-                             self.grad_N, self.grad_lr, self.grad_maxiter)
-        f_hat = grad_f_amp(f_hat, soln_r[idx], x)
+        self.idx_ = self.idxs_[idx_num]
+        self.freq_hat_ = self.freqs_red_[self.idx_]
+        self.phi_hat_ = self.phis_red_[self.idx_]
+        self.off_hat_ = self.offs_red_[self.idx_]
+        
+        soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.off_hat_)
+        f_hat = grad_f(x, soln, self.grad_alpha, self.grad_beta, \
+                       self.grad_N, self.grad_lr, self.grad_maxiter)
+        f_hat = grad_f_amp(f_hat, soln, x)
         
         self.f_hat_ = f_hat
-        self.freq_hat_ = self.freqs_.T.reshape((-1))[idx]
-        self.phi_hat_ = np.transpose(self.phis_, (2,0,1)).reshape((-1, self.phis_.shape[1]))[idx]
         return self
     
     def transform(self, x, t):
-        soln = get_soln(self.freqs_, self.phis_, t, t[self.windows_[:,0]])
-        soln_r = np.transpose(soln, (1,0,2,3)).reshape((-1, soln.shape[2], soln.shape[3]))
-        x_rec = get_reconstruction(soln_r[self.idx_], self.f_hat_)
+        soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.off_hat_)
+        x_rec = get_reconstruction(soln, self.f_hat_)
         return x_rec
 
 
@@ -133,21 +136,20 @@ def get_soln(freqs, phis, t, offsets):
     
     Parameters
     ----------
-    freqs : the frequencies with shape (number of windows x number of modes)
-    phis : the phis with shape (number of windows x number of channels x number of modes)
+    freqs : the frequencies with shape (number of modes)
+    phis : the phis with shape (number of modes x number of channels)
     t : the time snapshots
     offsets : the temporal offset of each window
     
     Returns
     -------
-    soln : the extended solutions with shape (number of windows x number of modes x number of channels x time)
+    soln : the extended solutions with shape (number of modes x number of channels x time)
     '''
-    soln = np.empty((freqs.shape[0], freqs.shape[1], phis.shape[1], len(t)))
-    for r in range(freqs.shape[-1]):
-        for i in range(len(freqs)):
-            temp = np.exp(2*np.pi*1j*((t-offsets[i]) * freqs[i,r]))
-            temp2 = phis[i,:,r][:,None]*temp
-            soln[i,r] = temp2.real
+    soln = np.empty((freqs.shape[0], phis.shape[1], len(t)))
+    for i in range(len(freqs)):
+        temp = np.exp(2*np.pi*1j*((t-offsets[i]) * freqs[i]))
+        temp2 = phis[i,:][:,None]*temp
+        soln[i] = temp2.real
     
     return(soln)
 
