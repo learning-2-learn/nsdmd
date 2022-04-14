@@ -74,18 +74,16 @@ def test_get_soln():
     assert np.allclose(res, ans)
     
 def test_get_t_delay_from_soln():
-    freqs = np.array([[1,-1],[1,-1]])
-    phi = np.array([[[np.exp(1j*0),np.exp(1j*0)],[np.exp(1j*.1),np.exp(1j*.1)],\
-                     [np.exp(1j*.2),np.exp(1j*.2)]],\
-                    [[-np.exp(1j*0),-np.exp(1j*0)],[-np.exp(1j*.1),-np.exp(1j*.1)],\
-                     [-np.exp(1j*.2),-np.exp(1j*.2)]]])
+    freqs = np.array([1,-1,1,-1])
+    phi = np.array([[np.exp(1j*0),np.exp(1j*.1),np.exp(1j*.2)], [np.exp(1j*0),np.exp(1j*.1),np.exp(1j*.2)], \
+                    [-np.exp(1j*0),-np.exp(1j*.1),-np.exp(1j*.2)], [-np.exp(1j*0),-np.exp(1j*.1),-np.exp(1j*.2)]])
     t = np.arange(1000)*0.001
     t_step = 0.001
-    offsets = np.array([0,.5])
+    offsets = np.array([0,0,0.5,0.5])
     
     res = get_t_delay_from_soln(freqs,phi,t,t_step,offsets)
     a = int(np.round(1000*0.1/2/np.pi))
-    ans = np.array([[[0,a,2*a],[0,-a,-2*a]],[[0,a,2*a],[0,-a,-2*a]]])
+    ans = np.array([[0,a,2*a],[0,-a,-2*a],[0,a,2*a],[0,-a,-2*a]])
     assert np.allclose(res, ans)
     
 def test_exact_Bf():
