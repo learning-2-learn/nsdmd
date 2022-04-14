@@ -39,7 +39,7 @@ class NSDMD():
         self.offsets_ = offsets
         return self
 
-    def fit_ns(self, x, t):
+    def fit_reduction(self, x, t):
         group_idx = group_by_similarity(self.freqs_, self.phis_, self.sim_thresh_freq, self.sim_thresh_phi_amp)
         
         idx_init = get_red_init(group_idx)
