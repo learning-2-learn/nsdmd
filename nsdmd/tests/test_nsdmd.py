@@ -1,6 +1,7 @@
 import numpy as np
 from nsdmd.nsdmd import opt_dmd_win
 from nsdmd.nsdmd import group_by_similarity
+from nsdmd.nsdmd import get_red_init
 from nsdmd.nsdmd import get_soln
 from nsdmd.nsdmd import get_t_delay_from_soln
 from nsdmd.nsdmd import exact_Bf
@@ -62,6 +63,11 @@ def test_group_by_similarity():
     ans_5 = [[[0,1]],[[0],[1]]]
     assert res_5==ans_5, 'Case where phi amp polarity is different'
     
+def test_get_red_init():
+    group_idx = [[[0,1,2],[3]],[1]]
+    res = get_red_init(group_idx, random_seed=0)
+    ans = np.array([[0, 0], [3, 0], [0, 1]])
+    assert np.allclose(res, ans)
 
 def test_get_soln():
     freqs = np.array([1,-1])

@@ -29,53 +29,44 @@ class NSDMD():
         self.freqs_ = f
         self.phis_ = p
         self.windows_ = w
+        self.offsets_ = t[self.windows_[:,0]][:,None]*np.ones((self.freqs_.shape[1]), dtype=int)[None,:]
         return self
     
-    def set_opt_values(self, freqs, phis, windows):
+    def set_opt_values(self, freqs, phis, windows, offsets):
         self.freqs_ = freqs
         self.phis_ = phis
         self.windows_ = windows
+        self.offsets_ = offsets
         return self
 
     def fit_ns(self, x, t):
         group_idx = group_by_similarity(self.freqs_, self.phis_, self.sim_thresh_freq, self.sim_thresh_phi_amp)
         
-        freqs_sub = []
-        phi_sub = []
-        offsets_sub = []
-        for j, groups in enumerate(group_idx):
-            for g in groups:
-                idx = np.random.choice(g)
-                freqs_sub.append(self.freqs_[:,j][idx])
-                phi_sub.append(self.phis_[:,j,:][idx])
-                offsets_sub.append(t[self.windows_[idx,0]])
-        self.freqs_red_ = np.array(freqs_sub)
-        self.phis_red_ = np.array(phi_sub)
-        self.offs_red_ = np.array(offsets_sub)
-        
-        soln = get_soln(self.freqs_red_, self.phis_red_, t, self.offs_red_)
+        idx_init = get_red_init(group_idx)
+        idx = tuple(idx_init.T)
+        soln = get_soln(self.freqs_[idx], self.phis_[idx], t, self.offsets_[idx])
         
         B,f = exact_Bf(x, soln)
-        self.idxs_, self.errors_ = exact_f_greedy(B,f,soln,x,self.exact_N, self.exact_var_thresh, self.verbose)
+        idxs, self.errors_ = exact_f_greedy(B,f,soln,x,self.exact_N, self.exact_var_thresh, self.verbose)
+        self.idx_red_ = [idx_init[idx] for idx in idxs]
         
         return self
     
     def fit_f(self, x, t, idx_num):
-        self.idx_ = self.idxs_[idx_num]
-        self.freq_hat_ = self.freqs_red_[self.idx_]
-        self.phi_hat_ = self.phis_red_[self.idx_]
-        self.off_hat_ = self.offs_red_[self.idx_]
+        self.idx_hat_ = self.idx_red_[idx_num]
+        idx = tuple(self.idx_hat_.T)
+        self.freq_hat_ = self.freqs_[idx]
+        self.phi_hat_ = self.phis_[idx]
+        self.offset_hat_ = self.offsets_[idx]
         
-        soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.off_hat_)
+        soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.offset_hat_)
         f_hat = grad_f(x, soln, self.grad_alpha, self.grad_beta, \
                        self.grad_N, self.grad_lr, self.grad_maxiter)
-        f_hat = grad_f_amp(f_hat, soln, x)
-        
-        self.f_hat_ = f_hat
+        self.f_hat_ = grad_f_amp(f_hat, soln, x)
         return self
     
     def transform(self, x, t):
-        soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.off_hat_)
+        soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.offset_hat_)
         x_rec = get_reconstruction(soln, self.f_hat_)
         return x_rec
 
@@ -213,6 +204,27 @@ def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
             temp2 = _group_by_polarity(np.abs(phis[:,i-1,:]), np.abs(phis[:,i,:]), 'phi_amp_pol')
             groups.append([[g] for g in np.unique(np.hstack((temp1,temp2)))])
     return(groups)
+
+def get_red_init(group_idx, random_seed=None):
+    '''
+    Gets the initial reduction of subselection of indicies from similarities
+    
+    Parameters
+    ----------
+    group_idx : output of group_by_similarity, list of groups of similar indicies
+    
+    Returns
+    -------
+    idx_red : list of reduced indicies where each pair has the window and mode respectively
+    '''
+    if random_seed is not None:
+        np.random.seed(random_seed)
+    idx_red = []
+    for j, groups in enumerate(group_idx):
+        for g in groups:
+            idx_red.append([np.random.choice(g),j])
+    idx_red = np.array(idx_red)
+    return(idx_red)
 
 ###################### Exact Method
 
