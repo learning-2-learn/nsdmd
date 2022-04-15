@@ -113,7 +113,7 @@ def make_network(freq, t_len, phi_amp, phi_phase, t_step=0.001, time_mod=0, coup
     
     freq_term = np.cos(2*np.pi*freq*np.arange(-t_len,2*t_len)*t_step)
     t = freq_term * coupling
-    phi_t = t[np.arange(t_len, 2*t_len) - phi_phase[:,None]]
+    phi_t = t[np.arange(t_len, 2*t_len) + phi_phase[:,None]]
     
     phi_amp = phi_amp / np.sum(phi_amp**2, axis=0)**0.5 #Normalize
     
