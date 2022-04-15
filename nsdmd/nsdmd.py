@@ -416,41 +416,32 @@ def grad_f(x, soln, alpha, beta, N, lr, maxiter, fit_coupling=False, t_delay=Non
     f = grad_f_init(x, soln, beta, N)
     f[f<0]=0
     if fit_coupling:
-        f_2D = f.copy()
-        f = f[:,None,:] * np.ones((x.shape[0]))[None,:,None] 
-        
-        for i in range(t_delay.shape[0]):
-            for j in range(t_delay.shape[1]):
-                idx = t_delay[i,j] + np.arange(f.shape[2])
-                idx[idx<0]=0
-                idx[idx>=f.shape[2]]=f.shape[2]-1
-                f[i,j] = f[i,j,idx]
+        idx = t_delay[:,:,None] + np.arange(f.shape[1])[None,None,:]
+        idx[idx<0]=0
+        idx[idx>=f.shape[1]]=f.shape[1]-1
+        f_3D = np.empty((soln.shape))
     
     for k in range(maxiter):
         if fit_coupling:
-            dLdf = grad_f_grad_loss(f, x, soln, alpha, beta, N)
-            f_2D = f_2D - lr*dLdf
-            f_2D[f_2D<0]=0
-            f_2D[...,N:-N] = utils.moving_average_dim(f_2D,2*N+1,-1)
-            f_2D[...,:N] = np.mean(f_2D[...,:N],axis=-1)[...,None]
-            f_2D[...,-N:] = np.mean(f_2D[...,-N:],axis=-1)[...,None]
-            f = f_2D[:,None,:] * np.ones((x.shape[0]))[None,:,None]
             for i in range(t_delay.shape[0]):
                 for j in range(t_delay.shape[1]):
-                    idx = t_delay[i,j] + np.arange(f.shape[2])
-                    idx[idx<0]=0
-                    idx[idx>=f.shape[2]]=f.shape[2]-1
-                    f[i,j] = f[i,j,idx]
-
+                    f_3D[i,j] = f[i,idx[i,j]]
+            dLdf = grad_f_grad_loss(f_3D, x, soln, alpha, beta, N)
         else:
             dLdf = grad_f_grad_loss(f, x, soln, alpha, beta, N)
-            f = f - lr*dLdf
-            f[f<0]=0
-            f[:,N:-N] = utils.moving_average_dim(f,2*N+1,-1)
-            f[:,:N] = np.mean(f[:,:N],axis=-1)[:,None]
-            f[:,-N:] = np.mean(f[:,-N:],axis=-1)[:,None]
             
-    return(f)
+        f = f - lr*dLdf
+        f[f<0]=0
+        f[:,N:-N] = utils.moving_average_dim(f,2*N+1,-1)
+        f[:,:N] = np.mean(f[:,:N],axis=-1)[:,None]
+        f[:,-N:] = np.mean(f[:,-N:],axis=-1)[:,None]
+    if fit_coupling:
+        for i in range(t_delay.shape[0]):
+            for j in range(t_delay.shape[1]):
+                f_3D[i,j] = f[i,idx[i,j]]
+        return(f_3D)
+    else:
+        return(f)
 
 def grad_f_amp(f, soln, x):
     '''
