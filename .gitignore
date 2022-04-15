@@ -1,0 +1,7 @@
+.ipynb_checkpoints/
+examples/.ipynb_checkpoints/
+nsdmd.egg-info/
+nsdmd/.ipynb_checkpoints/
+nsdmd/__pycache__/
+nsdmd/tests/.ipynb_checkpoints/
+nsdmd/tests/__pycache__/
