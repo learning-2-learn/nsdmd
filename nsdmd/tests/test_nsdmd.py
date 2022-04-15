@@ -122,7 +122,13 @@ def test_get_reconstruction():
     
     ans = x
     res = get_reconstruction(s, f)
-    assert np.allclose(ans, res)
+    assert np.allclose(ans, res), "f is 2 dim"
+    
+    f = np.ones((2,2,400))
+    
+    ans = x
+    res = get_reconstruction(s, f)
+    assert np.allclose(ans, res), "f is 3 dim"
     
 def test_get_reconstruction_error():
     x = np.array([[1,1],[1,1]])
@@ -172,6 +178,12 @@ def test_grad_f_grad_loss():
     ans_l2 = np.array([[-1.5,-1.5,-1.5,-1.5], [-3,-3,-3,-3]])
     assert np.allclose(res_l2, ans_l2), "L2 problem"
     
+    f = np.ones((2,1,4))/2
+    
+    res_l2 = grad_f_grad_loss(f, x, s, 0, 0, 1)
+    ans_l2 = np.array([[-1.5,-1.5,-1.5,-1.5], [-3,-3,-3,-3]])
+    assert np.allclose(res_l2, ans_l2), "L2 problem (3 dimensional f)"
+    
     x1 = np.arange(1,2)[:,None]*np.ones(4)[None,:]
     x2 = np.arange(2,1,-1)[:,None]*np.ones(4)[None,:]
     x = x1 + x2
@@ -205,6 +217,11 @@ def test_grad_f():
     ans = np.ones((2,400))
     assert np.allclose(res, ans, 0.001), "Problem with gradient descent"
     
+    delay = np.array([[0,0],[0,0]])
+    res = grad_f(x, s, 0,0.1,20, 0.1, 1000, True, delay)
+    ans = np.ones((2,400))
+    assert np.allclose(res, ans, 0.001), "Problem with gradient descent with delays"
+    
 def test_grad_f_amp():
     x1 = np.arange(1,3)[:,None]*np.cos(np.arange(400)*0.001*2*np.pi)[None,:]
     x2 = np.arange(3,1,-1)[:,None]*np.cos(np.arange(400)*0.001*2*np.pi*2)[None,:]
@@ -214,4 +231,10 @@ def test_grad_f_amp():
     
     res = grad_f_amp(f, s, x)
     ans = np.ones((2,400))
-    assert np.allclose(res, ans), "Problem with amplitude fixes"
+    assert np.allclose(res, ans), "Problem with amplitude fixes (2 dim)"
+    
+    f = np.ones((2,2,400))/2
+    
+    res = grad_f_amp(f, s, x)
+    ans = np.ones((2,2,400))
+    assert np.allclose(res, ans), "Problem with amplitude fixes (3 dim)"

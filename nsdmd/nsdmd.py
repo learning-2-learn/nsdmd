@@ -9,7 +9,7 @@ class NSDMD():
                  sim_thresh_freq=0.2, sim_thresh_phi_amp=0.95, \
                  exact_var_thresh=0.01, exact_N=20,\
                  grad_alpha=0.1, grad_beta=0.1, grad_N=20, grad_lr=0.01, grad_maxiter=100,\
-                 verbose=False):
+                 grad_fit_coupling=False, verbose=False):
         self.opt_win = opt_win
         self.opt_stride = opt_stride
         self.opt_rank = opt_rank
@@ -22,6 +22,7 @@ class NSDMD():
         self.grad_N = grad_N
         self.grad_lr = grad_lr
         self.grad_maxiter = grad_maxiter
+        self.grad_fit_coupling = grad_fit_coupling
         self.verbose = verbose
         
     def fit_opt(self, x, t, initial_freq_guess=None):
@@ -52,16 +53,18 @@ class NSDMD():
         
         return self
     
-    def fit_f(self, x, t, idx_num):
+    def fit_f(self, x, t, t_step, idx_num):
         self.idx_hat_ = self.idx_red_[idx_num]
         idx = tuple(self.idx_hat_.T)
         self.freq_hat_ = self.freqs_[idx]
         self.phi_hat_ = self.phis_[idx]
         self.offset_hat_ = self.offsets_[idx]
+        self.delay_hat_ = get_t_delay_from_soln(self.freq_hat_, self.phi_hat_, t, t_step, self.offset_hat_)
         
         soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.offset_hat_)
         f_hat = grad_f(x, soln, self.grad_alpha, self.grad_beta, \
-                       self.grad_N, self.grad_lr, self.grad_maxiter)
+                       self.grad_N, self.grad_lr, self.grad_maxiter, \
+                       self.grad_fit_coupling, self.delay_hat_)
         self.f_hat_ = grad_f_amp(f_hat, soln, x)
         return self
     
@@ -358,7 +361,7 @@ def grad_f_grad_loss(f, x, soln, alpha, beta, N):
     
     Parameters
     ----------
-    f : current guess of f with shape (number of modes, time)
+    f : current guess of f with shape (number of modes, time) OR (number of modes, number of channels, time)
     x : original data with shape (number of channels, time)
     soln : solutions with shape (number of modes, number of channels, time)
     alpha : number indicating strength of l1 regularization
@@ -369,22 +372,27 @@ def grad_f_grad_loss(f, x, soln, alpha, beta, N):
     -------
     dLdf : gradient of loss function
     '''
-    Y = np.matmul(np.transpose(soln, [2,1,0]), np.transpose(f)[:,:,None])[:,:,0] #time, chan
+    if len(f.shape)==3:
+        Y = np.matmul(np.transpose(soln, [2,1,0]), np.transpose(f, [2,0,1]))[:,:,0] #time, chan
+        f_mean = np.mean(f, axis=1)
+    else:
+        Y = np.matmul(np.transpose(soln, [2,1,0]), np.transpose(f)[:,:,None])[:,:,0] #time, chan
+        f_mean = f
     Y2 = Y - x.T
     l2_term = np.matmul(np.transpose(soln, [2,0,1]), Y2[:,:,None])[:,:,0].T
     
-    alpha_term = np.ones((f.shape)) * alpha
-    alpha_term[f<0] = -alpha_term[f<0]
+    alpha_term = np.ones((f_mean.shape)) * alpha
+    alpha_term[f_mean<0] = -alpha_term[f_mean<0]
     
-    beta_term = np.zeros((f.shape))
+    beta_term = np.zeros((f_mean.shape))
     for i in range(1,N+1):
-        beta_term[:,:-i] = beta_term[:,:-i] - beta*(f[:,i:]-f[:,:-i])
-        beta_term[:,i:] =  beta_term[:,i:]  + beta*(f[:,i:]-f[:,:-i])
+        beta_term[:,:-i] = beta_term[:,:-i] - beta*(f_mean[:,i:]-f_mean[:,:-i])
+        beta_term[:,i:] =  beta_term[:,i:]  + beta*(f_mean[:,i:]-f_mean[:,:-i])
     
     dLdf = l2_term + alpha_term + beta_term
     return(dLdf)
 
-def grad_f(x, soln, alpha, beta, N, lr, maxiter):
+def grad_f(x, soln, alpha, beta, N, lr, maxiter, fit_coupling=False, t_delay=None):
     '''
     Performs gradient descent to approximate f
     Note : assumes beta is constant, unlike in paper (TODO)
@@ -398,6 +406,8 @@ def grad_f(x, soln, alpha, beta, N, lr, maxiter):
     N : number of timepoints to smooth over
     lr : learning rate
     maxiter : total number of iterations
+    fit_coupling : flag telling whether or not to fit time delays with individual channels
+    t_delay : time delays of each channel with shape (number of modes, number of channels)
     
     Returns
     -------
@@ -405,14 +415,40 @@ def grad_f(x, soln, alpha, beta, N, lr, maxiter):
     '''
     f = grad_f_init(x, soln, beta, N)
     f[f<0]=0
+    if fit_coupling:
+        f_2D = f.copy()
+        f = f[:,None,:] * np.ones((x.shape[0]))[None,:,None] 
+        
+        for i in range(t_delay.shape[0]):
+            for j in range(t_delay.shape[1]):
+                idx = t_delay[i,j] + np.arange(f.shape[2])
+                idx[idx<0]=0
+                idx[idx>=f.shape[2]]=f.shape[2]-1
+                f[i,j] = f[i,j,idx]
     
-    for i in range(maxiter):
-        dLdf = grad_f_grad_loss(f, x, soln, alpha, beta, N)
-        f = f - lr*dLdf
-        f[f<0]=0
-        f[:,N:-N] = utils.moving_average_dim(f,2*N+1,1)
-        f[:,:N] = np.mean(f[:,:N],axis=1)[:,None]
-        f[:,-N:] = np.mean(f[:,-N:],axis=1)[:,None]
+    for k in range(maxiter):
+        if fit_coupling:
+            dLdf = grad_f_grad_loss(f, x, soln, alpha, beta, N)
+            f_2D = f_2D - lr*dLdf
+            f_2D[f_2D<0]=0
+            f_2D[...,N:-N] = utils.moving_average_dim(f_2D,2*N+1,-1)
+            f_2D[...,:N] = np.mean(f_2D[...,:N],axis=-1)[...,None]
+            f_2D[...,-N:] = np.mean(f_2D[...,-N:],axis=-1)[...,None]
+            f = f_2D[:,None,:] * np.ones((x.shape[0]))[None,:,None]
+            for i in range(t_delay.shape[0]):
+                for j in range(t_delay.shape[1]):
+                    idx = t_delay[i,j] + np.arange(f.shape[2])
+                    idx[idx<0]=0
+                    idx[idx>=f.shape[2]]=f.shape[2]-1
+                    f[i,j] = f[i,j,idx]
+
+        else:
+            dLdf = grad_f_grad_loss(f, x, soln, alpha, beta, N)
+            f = f - lr*dLdf
+            f[f<0]=0
+            f[:,N:-N] = utils.moving_average_dim(f,2*N+1,-1)
+            f[:,:N] = np.mean(f[:,:N],axis=-1)[:,None]
+            f[:,-N:] = np.mean(f[:,-N:],axis=-1)[:,None]
             
     return(f)
 
@@ -422,7 +458,7 @@ def grad_f_amp(f, soln, x):
     
     Parameters
     ----------
-    f : computed solution for f with shape (number of modes, time)
+    f : computed solution for f with shape (number of modes, time) OR (number of modes, num of chans, time)
     soln : solutions with shape (number of modes, number of channels, time)
     x : data matrix with shape (number of channels, time)
     
@@ -430,8 +466,12 @@ def grad_f_amp(f, soln, x):
     -------
     f_hat : global modulation f with fixed amplitude
     '''
-    norm,_,_,_ = np.linalg.lstsq((f[:,None,:] * soln).reshape((len(f),-1)).T, x.reshape((-1)),rcond=None)
-    f_hat = f * norm[:,None]
+    if len(f.shape)==3:
+        norm,_,_,_ = np.linalg.lstsq((f * soln).reshape((len(f),-1)).T, x.reshape((-1)),rcond=None)
+        f_hat = f * norm[:,None,None]
+    else:
+        norm,_,_,_ = np.linalg.lstsq((f[:,None,:] * soln).reshape((len(f),-1)).T, x.reshape((-1)),rcond=None)
+        f_hat = f * norm[:,None]
     return(f_hat)
 
 ###################### Reconstruction
@@ -443,16 +483,16 @@ def get_reconstruction(soln, f):
     Parameters
     ----------
     soln : solutions with shape (number of modes, number of channels, time)
-    f : global modulation f with shape (number of modes, time)
+    f : global modulation f with shape (number of modes, time) OR (num modes, num chans, time)
     
     Returns
     -------
     x_rec : reconstructed data matrix
     '''
-    x_rec = np.zeros((soln.shape[1], soln.shape[2]))
-    for r in range(len(soln)):
-        temp = soln[r,:,:] * f[r][None,:]
-        x_rec = x_rec + temp
+    if len(f.shape)==3:
+        x_rec = np.sum(soln * f, axis=0)
+    else:
+        x_rec = np.sum(soln * f[:,None,:], axis=0)
     return(x_rec)
 
 def get_reconstruction_error(x_true, x_rec):
@@ -529,3 +569,20 @@ def _group_by_freq_phi(freq, phi_amp, thresh_freq=0.2, thresh_phi_amp=0.95):
     if not in_group:
         groups.append([i+1])
     return(groups)
+
+
+######################### Development/doesn't currently work
+
+def find_lag(x, f, soln, t_delay, periods, N, edge_len):
+    errors = np.empty((soln.shape[0], 2*N+1, soln.shape[1]))
+    for i in range(soln.shape[0]):
+        for j in np.arange(-N,N+1):
+            f_temp = f.copy()
+            for k in range(soln.shape[1]):
+                idx = int(round(j*periods[i])) + t_delay[i,k] + np.arange(soln.shape[2])
+                idx[idx<0]=0
+                idx[idx>=soln.shape[2]]=soln.shape[2]-1
+                f_temp[i,k] = f[i,k,idx]
+            x_rec = nsdmd.get_reconstruction(soln[:,:,edge_len:-edge_len], f_temp[:,:,edge_len:-edge_len])
+            errors[i,j] = np.mean((x_rec - x[:,edge_len:-edge_len])**2, axis=1)
+    return errors
