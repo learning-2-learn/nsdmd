@@ -34,8 +34,8 @@ def test_make_network():
     
     res_n, res_f, res_c = make_network(f, t_len, phi_a, phi_p, t_step)
     assert np.allclose(res_n[0,np.array([0,250,500,750])], np.ones((4))/(14**0.5)), "regular idx 0"
-    assert np.allclose(res_n[1,np.array([30,280,530,780])], 2*np.ones((4))/(14**0.5)), "regular idx 1"
-    assert np.allclose(res_n[2,np.array([-30,220,470,720])], 3*np.ones((4))/(14**0.5)), "regular idx 2"
+    assert np.allclose(res_n[1,np.array([-30,220,470,720])], 2*np.ones((4))/(14**0.5)), "regular idx 1"
+    assert np.allclose(res_n[2,np.array([30,280,530,780])], 3*np.ones((4))/(14**0.5)), "regular idx 2"
     
     t_step = 0.002
     
