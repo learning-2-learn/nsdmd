@@ -1,12 +1,13 @@
 import numpy as np
 from nsdmd import optdmd
 from nsdmd import utils
+from scipy.stats import circmean
 
 ################## Classes
 
 class NSDMD():
     def __init__(self, opt_win=500, opt_stride=100, opt_rank=20, \
-                 sim_thresh_freq=0.2, sim_thresh_phi_amp=0.95, \
+                 sim_thresh_freq=0.2, sim_thresh_phi_amp=0.95, drift_N=51,\
                  exact_var_thresh=0.01, exact_N=20,\
                  grad_alpha=0.1, grad_beta=0.1, grad_N=20, grad_lr=0.01, grad_maxiter=100,\
                  grad_fit_coupling=False, verbose=False):
@@ -15,6 +16,7 @@ class NSDMD():
         self.opt_rank = opt_rank
         self.sim_thresh_freq = sim_thresh_freq
         self.sim_thresh_phi_amp = sim_thresh_phi_amp
+        self.drift_N = drift_N
         self.exact_var_thresh = exact_var_thresh
         self.exact_N = exact_N
         self.grad_alpha = grad_alpha
@@ -40,37 +42,54 @@ class NSDMD():
         self.offsets_ = offsets
         return self
 
-    def fit_reduction(self, x, t):
+    def fit_reduction(self, x, t, t_step):
         group_idx = group_by_similarity(self.freqs_, self.phis_, self.sim_thresh_freq, self.sim_thresh_phi_amp)
         
-        idx_init = get_red_init(group_idx)
-        idx = tuple(idx_init.T)
-        soln = get_soln(self.freqs_[idx], self.phis_[idx], t, self.offsets_[idx])
+        # -----Old-----
+        # idx_init = get_red_init(group_idx)
+        # idx = tuple(idx_init.T)
+        # soln = get_soln(self.freqs_[idx], self.phis_[idx], t, self.offsets_[idx])
+        
+        # -----New-----
+        freqs_time = get_freq_across_time(group_idx, self.freqs_.T, self.windows_, len(t), self.drift_N)
+        phis_init = get_phi_init(group_idx, freqs_time, self.phis_, self.windows_[:,0], t_step)
+        soln = get_soln_var_freq(group_idx, self.freqs_.T, phis_init, \
+                                 self.windows_, len(t), t_step, self.drift_N)
         
         B,f = exact_Bf(x, soln)
-        idxs, self.errors_ = exact_f_greedy(B,f,soln,x,self.exact_N, self.exact_var_thresh, self.verbose)
-        self.idx_red_ = [idx_init[idx] for idx in idxs]
+        self.idx_red_, self.errors_ = exact_f_greedy(B,f,soln,x,self.exact_N, self.exact_var_thresh, self.verbose)
+        # self.idx_red_ = [idx_init[idx] for idx in idxs]
+        self.solns_ = soln
         
         return self
     
-    def fit_f(self, x, t, t_step, idx_num):
+    # def fit_f(self, x, t, t_step, idx_num):
+    def fit_f(self, x, idx_num):
         self.idx_hat_ = self.idx_red_[idx_num]
-        idx = tuple(self.idx_hat_.T)
-        self.freq_hat_ = self.freqs_[idx]
-        self.phi_hat_ = self.phis_[idx]
-        self.offset_hat_ = self.offsets_[idx]
-        self.delay_hat_ = get_t_delay_from_soln(self.freq_hat_, self.phi_hat_, t, t_step, self.offset_hat_)
+        # idx = tuple(self.idx_hat_.T)
+        # self.freq_hat_ = self.freqs_[idx]
+        # self.phi_hat_ = self.phis_[idx]
+        # self.offset_hat_ = self.offsets_[idx]
+        # self.delay_hat_ = get_t_delay_from_soln(self.freq_hat_, self.phi_hat_, t, t_step, self.offset_hat_)
+        self.delay_hat_ = None
+        self.grad_fit_coupling = False #TODO
         
-        soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.offset_hat_)
-        f_hat = grad_f(x, soln, self.grad_alpha, self.grad_beta, \
+        
+        # soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.offset_hat_)
+        # f_hat = grad_f(x, soln, self.grad_alpha, self.grad_beta, \
+        #                self.grad_N, self.grad_lr, self.grad_maxiter, \
+        #                self.grad_fit_coupling, self.delay_hat_)
+        # self.f_hat_ = grad_f_amp(f_hat, soln, x)
+        f_hat = grad_f(x, self.solns_[self.idx_hat_], self.grad_alpha, self.grad_beta, \
                        self.grad_N, self.grad_lr, self.grad_maxiter, \
                        self.grad_fit_coupling, self.delay_hat_)
-        self.f_hat_ = grad_f_amp(f_hat, soln, x)
+        self.f_hat_ = grad_f_amp(f_hat, self.solns_[self.idx_hat_], x)
         return self
     
     def transform(self, x, t):
-        soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.offset_hat_)
-        x_rec = get_reconstruction(soln, self.f_hat_)
+        # soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.offset_hat_)
+        # x_rec = get_reconstruction(soln, self.f_hat_)
+        x_rec = get_reconstruction(self.solns_[self.idx_hat_], self.f_hat_)
         return x_rec
 
 
@@ -122,7 +141,106 @@ def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
 
     return(freqs, phis, windows)
 
-##################### Processing steps
+##################### Processing steps (new (add tests!!!))
+
+def get_freq_across_time(group_idx, freqs, windows, t_len, N):
+    freqs_all = []
+    for i, groups in enumerate(group_idx):
+        if len(groups)==0:
+            continue
+        else:
+            for group in groups:
+                freqs_wide = freqs[i,group][:,None]*np.ones((windows.shape[1]))[None,:]
+                freqs_row = np.empty((t_len))
+                empty = []
+                for j in range(t_len):
+                    loc = np.argwhere(windows[group]==j)
+                    if len(loc)==0:
+                        empty.append(j)
+                        continue
+                    else:
+                        idx = tuple(loc.T)
+                        temp = freqs_wide[idx]
+                        freqs_row[j] = np.mean(temp)
+                        if len(empty)>0:
+                            freqs_row[np.array(empty)] = freqs_row[j]
+                            empty = []
+                        last_val = freqs_row[j]
+                if len(empty)>0:
+                    freqs_row[np.array(empty)] = last_val
+                    empty = []
+                freqs_m = utils.moving_average_dim(freqs_row, N, 0)
+                freqs_all.append(np.hstack((freqs_m[0]*np.ones(t_len-len(freqs_m)-int(N/2)),\
+                                            freqs_m,\
+                                            freqs_m[-1]*np.ones(int(N/2)))))
+    freqs_all = np.array(freqs_all)
+    return(freqs_all)
+
+def get_phi_init(group_idx, freqs, phi, offsets, t_step):
+    phase_in = np.cumsum(freqs*t_step, axis=1)
+    j = 0
+    phi_init = []
+    for i, groups in enumerate(group_idx):
+        if len(groups)==0:
+            continue
+        else:
+            for group in groups:
+                t_diff = np.exp(-2*np.pi*1j*phase_in[j,offsets[group]])
+                j += 1
+                phi_init.append(phi[group, i]*t_diff[:,None])
+    return(phi_init)
+
+def get_soln_var_freq(group_idx, freqs, phis, windows, t_len, t_step, N):
+    soln = np.empty((len(phis), phis[0].shape[1], t_len))
+    j = 0
+    for i, groups in enumerate(group_idx):
+        if len(groups)==0:
+            continue
+        else:
+            for group in groups:
+                freqs_wide = freqs[i,group][:,None]*np.ones((windows.shape[1]))[None,:]
+                freqs_row = np.empty((t_len))
+                phis_wide = phis[j][:,None,:]*np.ones((windows.shape[1]))[None,:,None]
+                phis_row = np.empty((t_len, phis[0].shape[1]), dtype=complex)
+                empty = []
+                for k in range(t_len):
+                    loc = np.argwhere(windows[group]==k)
+                    if len(loc)==0:
+                        empty.append(k)
+                        continue
+                    else:
+                        idx = tuple(loc.T)
+                        temp = freqs_wide[idx]
+                        freqs_row[k] = np.mean(temp)
+                        
+                        temp = phis_wide[idx]
+                        a = np.mean(np.abs(temp), axis=0)
+                        p = circmean(np.angle(temp), axis=0, high=np.pi, low=-np.pi)
+                        phis_row[k] = a*np.exp(1j*p)
+                        if len(empty)>0:
+                            freqs_row[np.array(empty)] = freqs_row[k]
+                            phis_row[np.array(empty)] = phis_row[k]
+                            empty = []
+                        last_val_f = freqs_row[k]
+                        last_val_p = phis_row[k]
+                if len(empty)>0:
+                    freqs_row[np.array(empty)] = last_val_f
+                    phis_row[np.array(empty)] = last_val_p
+                    empty = []
+                freqs_m = utils.moving_average_dim(freqs_row, N, 0)
+                freqs_m = np.hstack((freqs_m[0]*np.ones(t_len-len(freqs_m)-int(N/2)),\
+                                     freqs_m,\
+                                     freqs_m[-1]*np.ones(int(N/2))))
+            
+            
+                phase_in = np.cumsum(freqs_m * t_step)
+                temp = np.exp(2*np.pi*1j*phase_in)
+                soln[j] = (phis_row*temp[:,None]).real.T
+                j += 1
+    return(soln)
+
+
+##################### Processing steps (old)
 
 def get_soln(freqs, phis, t, offsets):
     '''
