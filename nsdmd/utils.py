@@ -101,6 +101,10 @@ def make_network(freq, t_len, phi_amp, phi_phase, t_step=0.001, time_mod=0, coup
     
     if not (type(freq)==np.float64 or type(freq)==np.int64 or type(freq)==float or type(freq)==int):
         assert len(freq)==3*t_len, 'Length of frequency term not correct'
+        phase_in = np.cumsum(freq*t_step) #Adds integral into cosine
+        freq_term = np.cos(2*np.pi*phase_in)
+    else:
+        freq_term = np.cos(2*np.pi*freq*np.arange(-t_len,2*t_len)*t_step)
     
     if type(time_mod)==float or type(time_mod)==int:
         time_mod = 0.5*(1 + np.cos(time_mod * 2*np.pi * np.arange(0,t_len*t_step,t_step)))
@@ -111,7 +115,6 @@ def make_network(freq, t_len, phi_amp, phi_phase, t_step=0.001, time_mod=0, coup
     assert len(time_mod)==t_len, 'Length of time modulation not correct'
     assert len(coupling)==3*t_len, 'Length of coupling not correct'
     
-    freq_term = np.cos(2*np.pi*freq*np.arange(-t_len,2*t_len)*t_step)
     t = freq_term * coupling
     phi_t = t[np.arange(t_len, 2*t_len) + phi_phase[:,None]]
     
