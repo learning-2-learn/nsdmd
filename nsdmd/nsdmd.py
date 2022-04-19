@@ -52,8 +52,9 @@ class NSDMD():
         
         # -----New-----
         freqs_time = get_freq_across_time(group_idx, self.freqs_.T, self.windows_, len(t), self.drift_N)
+        self.freqs_time_ = freqs_time
         phis_init = get_phi_init(group_idx, freqs_time, self.phis_, self.windows_[:,0], t_step)
-        soln = get_soln_var_freq(group_idx, self.freqs_.T, phis_init, \
+        soln, self.phis_time_ = get_soln_var_freq(group_idx, self.freqs_.T, phis_init, \
                                  self.windows_, len(t), t_step, self.drift_N)
         
         B,f = exact_Bf(x, soln)
@@ -66,6 +67,8 @@ class NSDMD():
     # def fit_f(self, x, t, t_step, idx_num):
     def fit_f(self, x, idx_num):
         self.idx_hat_ = self.idx_red_[idx_num]
+        self.freqs_hat_ = self.freqs_time_[self.idx_hat_]
+        self.phis_hat_ = self.phis_time_[self.idx_hat_]
         # idx = tuple(self.idx_hat_.T)
         # self.freq_hat_ = self.freqs_[idx]
         # self.phi_hat_ = self.phis_[idx]
@@ -192,6 +195,7 @@ def get_phi_init(group_idx, freqs, phi, offsets, t_step):
 
 def get_soln_var_freq(group_idx, freqs, phis, windows, t_len, t_step, N):
     soln = np.empty((len(phis), phis[0].shape[1], t_len))
+    phis_all = []
     j = 0
     for i, groups in enumerate(group_idx):
         if len(groups)==0:
@@ -236,8 +240,10 @@ def get_soln_var_freq(group_idx, freqs, phis, windows, t_len, t_step, N):
                 phase_in = np.cumsum(freqs_m * t_step)
                 temp = np.exp(2*np.pi*1j*phase_in)
                 soln[j] = (phis_row*temp[:,None]).real.T
+                phis_all.append(phis_row)
                 j += 1
-    return(soln)
+    phis_all = np.array(phis_all)
+    return(soln, phis_all)
 
 
 ##################### Processing steps (old)
