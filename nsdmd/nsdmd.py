@@ -54,8 +54,8 @@ class NSDMD():
         freqs_time = get_freq_across_time(group_idx, self.freqs_.T, self.windows_, len(t), self.drift_N)
         self.freqs_time_ = freqs_time
         phis_init = get_phi_init(group_idx, freqs_time, self.phis_, self.windows_[:,0], t_step)
-        soln, self.phis_time_ = get_soln_var_freq(group_idx, self.freqs_.T, phis_init, \
-                                 self.windows_, len(t), t_step, self.drift_N)
+        soln, self.phis_time_, self.delays_ = get_soln_var_freq(group_idx, self.freqs_.T, phis_init, \
+                                              self.windows_, len(t), t_step, self.drift_N)
         
         B,f = exact_Bf(x, soln)
         self.idx_red_, self.errors_ = exact_f_greedy(B,f,soln,x,self.exact_N, self.exact_var_thresh, self.verbose)
@@ -74,8 +74,7 @@ class NSDMD():
         # self.phi_hat_ = self.phis_[idx]
         # self.offset_hat_ = self.offsets_[idx]
         # self.delay_hat_ = get_t_delay_from_soln(self.freq_hat_, self.phi_hat_, t, t_step, self.offset_hat_)
-        self.delay_hat_ = None
-        self.grad_fit_coupling = False #TODO
+        self.delay_hat_ = self.delays_[self.idx_hat_]
         
         
         # soln = get_soln(self.freq_hat_, self.phi_hat_, t, self.offset_hat_)
@@ -196,6 +195,7 @@ def get_phi_init(group_idx, freqs, phi, offsets, t_step):
 def get_soln_var_freq(group_idx, freqs, phis, windows, t_len, t_step, N):
     soln = np.empty((len(phis), phis[0].shape[1], t_len))
     phis_all = []
+    t_delay = np.empty((len(phis), phis[0].shape[1]), dtype=int)
     j = 0
     for i, groups in enumerate(group_idx):
         if len(groups)==0:
@@ -241,9 +241,13 @@ def get_soln_var_freq(group_idx, freqs, phis, windows, t_len, t_step, N):
                 temp = np.exp(2*np.pi*1j*phase_in)
                 soln[j] = (phis_row*temp[:,None]).real.T
                 phis_all.append(phis_row)
+                
+                temp2 = phis_row*temp[:,None] # 2000 x 100
+                temp3 = np.round(np.angle(temp2[0,:]) / (2*np.pi*freqs_m[0]) / t_step)
+                t_delay[j] = np.array([int(ch) for ch in temp3])
                 j += 1
     phis_all = np.array(phis_all)
-    return(soln, phis_all)
+    return(soln, phis_all, t_delay)
 
 
 ##################### Processing steps (old)
