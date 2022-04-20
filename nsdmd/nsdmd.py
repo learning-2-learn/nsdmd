@@ -147,6 +147,7 @@ def get_phi_init(freqs, phi, offsets, t_step):
     -------
     phi_init : phi at t=0 for each window with shape (number of windows, number of channels)
     '''
+    freqs = np.insert(freqs[:-1],0,0)
     phase_in = np.cumsum(freqs*t_step)
     t_diff = np.exp(-2*np.pi*1j*phase_in[offsets])
     phi_init = (phi*t_diff[:,None])
@@ -163,7 +164,7 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
     idxs : list of pairs where the first element of the pair is the mode, and the second element of the pair
         is a list of windows with shape (num windows).
         This list represents the sub groups of similar solutions
-    t_len : length of window
+    t_len : length of entire region of interest
     windows : list of windows
     N : amount of temporal averaging of the frequecies
     t_step : inverse of sampling rate
@@ -203,39 +204,14 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
             p = circmean(np.angle(temp), axis=0, high=np.pi, low=-np.pi)
             phis_row[i] = a*np.exp(1j*p)
             
-        phase_in = np.cumsum(freqs_m * t_step)
+        freqs_in = np.insert(freqs_m[:-1],0,0)
+        phase_in = np.cumsum(freqs_in * t_step)
         temp = np.exp(2*np.pi*1j*phase_in)
         soln[j] = (phis_row*temp[:,None]).real.T
         freq_all[j] = freqs_row
         phi_all[j] = phis_row
     
     return(soln, freq_all, phi_all)
-
-
-def get_t_delay_from_soln(freqs, phis, t, t_step, offsets):
-    '''
-    Predicts temporal delays between channels from the solutions
-    
-    Parameters
-    ----------
-    freqs : the frequencies with shape (number of modes)
-    phis : the phis with shape (number of modes x number of channels)
-    t : the time snapshots
-    t_step : the temporal difference between snapshots (or 1 over sampling rate)
-    offsets : the temporal offset of each window
-    
-    Returns
-    -------
-    t_delay : the predicted time delays with shape (number of windows x number of modes x number of channels)
-    '''
-    t_delay = np.empty((freqs.shape[0], phis.shape[1]), dtype=int)
-    for i in range(len(freqs)):
-        temp = np.exp(2*np.pi*1j*((t-offsets[i]) * freqs[i]))
-        temp2 = phis[i,:][:,None]*temp
-        temp3 = np.round(np.angle(temp2[:,0]) / (2*np.pi*freqs[i]) / t_step)
-        t_delay[i] = np.array([int(ch) for ch in temp3])
-    
-    return(t_delay)
 
 
 def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):

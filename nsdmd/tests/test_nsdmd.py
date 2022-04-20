@@ -2,8 +2,8 @@ import numpy as np
 from nsdmd.nsdmd import opt_dmd_win
 from nsdmd.nsdmd import group_by_similarity
 from nsdmd.nsdmd import get_red_init
+from nsdmd.nsdmd import get_phi_init
 from nsdmd.nsdmd import get_soln
-from nsdmd.nsdmd import get_t_delay_from_soln
 from nsdmd.nsdmd import exact_Bf
 from nsdmd.nsdmd import exact_f_from_Bf
 from nsdmd.nsdmd import get_reconstruction
@@ -64,33 +64,50 @@ def test_group_by_similarity():
     assert res_5==ans_5, 'Case where phi amp polarity is different'
     
 def test_get_red_init():
-    group_idx = [[[0,1,2],[3]],[1]]
-    res = get_red_init(group_idx, random_seed=0)
-    ans = np.array([[0, 0], [3, 0], [0, 1]])
+    group_idx = [[[0,1,2],[3]],[[1]]]
+    res = get_red_init(group_idx, 4)
+    ans = [[0, np.array([0, 1, 2, 2])], [0, np.array([3, 3, 3, 3])], [1, np.array([1, 1, 1, 1])]]
+    for i in range(len(res)):
+        assert res[i][0]==ans[i][0]
+        assert np.allclose(res[i][1], ans[i][1])
+    
+def test_get_phi_init():
+    f = np.hstack((4*np.ones((500)), 2*np.ones((500))))
+    t_step = 0.001
+    phi_a = np.array([1,2,3])
+    phi = np.vstack((phi_a, phi_a, -phi_a))
+    offsets = np.array((0,250,750))
+    
+    res = get_phi_init(f, phi, offsets, t_step)
+    ans = np.vstack((phi_a,phi_a,phi_a))
     assert np.allclose(res, ans)
 
 def test_get_soln():
-    freqs = np.array([1,-1])
-    phi = np.array([[1,1,1], [-1,-1,-1]])
-    t = np.arange(1000)*0.001
-    offsets = np.array([0,.5])
-    
-    res = get_soln(freqs,phi,t,offsets)
-    ans = np.ones((2,3))[:,:,None] * np.cos(np.arange(1000)*0.001*2*np.pi)[None,None,:]
-    assert np.allclose(res, ans)
-    
-def test_get_t_delay_from_soln():
-    freqs = np.array([1,-1,1,-1])
-    phi = np.array([[np.exp(1j*0),np.exp(1j*.1),np.exp(1j*.2)], [np.exp(1j*0),np.exp(1j*.1),np.exp(1j*.2)], \
-                    [-np.exp(1j*0),-np.exp(1j*.1),-np.exp(1j*.2)], [-np.exp(1j*0),-np.exp(1j*.1),-np.exp(1j*.2)]])
-    t = np.arange(1000)*0.001
+    freqs = np.array([[4,-4],[4,-4],[2,-2],[2,-2]])
+    phi = np.array([[[1,2,3], [1,2,3]], [[1,2,3], [1,2,3]], [[1,2,3],[1,2,3]], [[-1,-2,-3],[-1,-2,-3]]])
+    idxs = [[0,np.arange(4)], [1,np.arange(4)]]
+    t_len = 1000
+    N = 1
     t_step = 0.001
-    offsets = np.array([0,0,0.5,0.5])
+    windows = np.array([np.arange(250), np.arange(250,500), np.arange(500,750), np.arange(750,1000)])
+
+    res = get_soln(freqs, phi, idxs, t_len, windows, N, t_step)
+    ans = np.array([[[ 1.,  1., -1.], [ 2.,  2., -2.], [ 3.,  3., -3.]], \
+                    [[ 1.,  1., -1.], [ 2.,  2., -2.], [ 3.,  3., -3.]]])
+
+    np.allclose(ans, res[0][:,:,np.array([0,250,750])])
     
-    res = get_t_delay_from_soln(freqs,phi,t,t_step,offsets)
-    a = int(np.round(1000*0.1/2/np.pi))
-    ans = np.array([[0,a,2*a],[0,-a,-2*a],[0,a,2*a],[0,-a,-2*a]])
-    assert np.allclose(res, ans)
+    ans = np.ones((2,1000))
+    ans[0,:500]=4
+    ans[0,500:]=2
+    ans[1,:500]=-4
+    ans[1,500:]=-2
+    assert np.allclose(res[1], ans)
+    
+    ans = np.ones((2,1000,3))
+    ans[:,:,1]=2
+    ans[:,:,2]=3
+    assert np.allclose(res[2], ans)
     
 def test_exact_Bf():
     x1 = np.arange(1,2)[:,None]*np.cos(np.arange(4)*0.001*2*np.pi)[None,:]
