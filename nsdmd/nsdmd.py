@@ -132,12 +132,47 @@ def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
 ##################### Processing steps (new (add tests!!!))
 
 def get_phi_init(freqs, phi, offsets, t_step):
+    '''
+    Gets the spatial mode, phi, at t=0
+    
+    Parameters
+    ----------
+    freqs : frequencies at every timepoint with shape (time)
+    phi : phi at every measured window with shape (number of windows, number of channels)
+    offsets : the temporal offsets (in number of timesteps) of each window with shape (number of windows)
+    t_step : the inverse of the sampling rate
+    
+    Returns
+    -------
+    phi_init : phi at t=0 for each window with shape (number of windows, number of channels)
+    '''
     phase_in = np.cumsum(freqs*t_step)
     t_diff = np.exp(-2*np.pi*1j*phase_in[offsets])
     phi_init = (phi*t_diff[:,None])
     return(phi_init)
 
 def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
+    '''
+    Gets the solutions and calculates the frequencies, and phis over time
+    
+    Parameters
+    ----------
+    freqs : frequencies with shape (num windows, num modes)
+    phis : phis with shape (num windows, num modes, num channels)
+    idxs : list of pairs where the first element of the pair is the mode, and the second element of the pair
+        is a list of windows with shape (num windows).
+        This list represents the sub groups of similar solutions
+    t_len : length of window
+    windows : list of windows
+    N : amount of temporal averaging of the frequecies
+    t_step : inverse of sampling rate
+    
+    Returns
+    -------
+    soln : solutions with shape (num modes, num channels, time)
+    freq_all : frequencies across time with shape (num modes, time)
+    phi_all : phis across time (except with a phase at t=0) with shape (num modes, num channels, time)
+    '''
     soln = np.empty((len(idxs), phis.shape[-1], t_len))
     
     freq_all = np.empty((len(idxs), t_len))
