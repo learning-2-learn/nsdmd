@@ -499,6 +499,7 @@ def grad_f_amp(f, soln, x):
     else:
         norm,_,_,_ = np.linalg.lstsq((f[:,None,:] * soln).reshape((len(f),-1)).T, x.reshape((-1)),rcond=None)
         f_hat = f * norm[:,None]
+    f_hat[f_hat<0] = 0
     return(f_hat)
 
 ###################### Reconstruction
