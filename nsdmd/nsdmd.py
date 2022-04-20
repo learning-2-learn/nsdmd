@@ -55,7 +55,6 @@ class NSDMD():
     
     def fit_f(self, x, t_len, t_step, idx_num):
         self.idx_hat_ = self.idx_red_[idx_num]
-        self.delay_hat_ = None
         
         soln, freqs, phis = get_soln(self.freqs_, self.phis_, self.idx_hat_,\
                                      t_len, self.windows_, self.drift_N, t_step)
@@ -64,6 +63,8 @@ class NSDMD():
         a = np.mean(np.abs(phis), axis=1)
         p = circmean(np.angle(phis), axis=1, high=np.pi, low=-np.pi)
         self.phi_mean_ = a*np.exp(1j*p)
+        
+        self.delay_hat_ = np.array(np.round(p / (2 * np.pi * self.freq_mean_[:,None]) / t_step), dtype=int)
         
         f_hat = grad_f(x, soln, self.grad_alpha, self.grad_beta, \
                        self.grad_N, self.grad_lr, self.grad_maxiter, \
@@ -207,10 +208,6 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
         soln[j] = (phis_row*temp[:,None]).real.T
         freq_all[j] = freqs_row
         phi_all[j] = phis_row
-        
-        # temp2 = phis_row*temp[:,None] # 2000 x 100
-        # temp3 = np.round(np.angle(temp2[0,:]) / (2*np.pi*freqs_m[0]) / t_step)
-        # t_delay[j] = np.array([int(ch) for ch in temp3])
     
     return(soln, freq_all, phi_all)
 
