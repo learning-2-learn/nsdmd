@@ -45,7 +45,8 @@ class NSDMD():
     def fit_reduction(self, x, t_len, t_step):
         group_idx = group_by_similarity(self.freqs_, self.phis_, self.sim_thresh_freq, self.sim_thresh_phi_amp)
         
-        idx_init = np.array(get_red_init(group_idx, len(self.windows_)), dtype=object)
+        # idx_init = np.array(get_red_init(group_idx, len(self.windows_)), dtype=object)
+        idx_init = get_red_init(group_idx, len(self.windows_))
         soln, _, _ = get_soln(self.freqs_, self.phis_, idx_init, t_len, self.windows_, self.drift_N, t_step)
         
         B,f = exact_Bf(x, soln)
@@ -161,8 +162,7 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
     ----------
     freqs : frequencies with shape (num windows, num modes)
     phis : phis with shape (num windows, num modes, num channels)
-    idxs : list of pairs where the first element of the pair is the mode, and the second element of the pair
-        is a list of windows with shape (num windows).
+    idxs : list of rows (windows) and cols (modes)
         This list represents the sub groups of similar solutions
     t_len : length of entire region of interest
     windows : list of windows
@@ -180,29 +180,34 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
     freq_all = np.empty((len(idxs), t_len))
     phi_all = np.empty((len(idxs), t_len, phis.shape[-1]), dtype=complex)
     
+    loc = [[] for _ in range(t_len)]
+    for i, win in enumerate(windows):
+        for w in win:
+            loc[w].append(i)
+    loc_len = np.array([len(l) for l in loc])
+    loc = np.array(loc, dtype=object)
+    
+    # idxs = tuple(np.transpose(idxs, [1,0,2]))
+    
     for j, idx in enumerate(idxs):
-        freqs_wide = freqs[idx[1], idx[0]][:,None] * np.ones((windows.shape[1]))[None,:]
+        freqs_sub = freqs[tuple(idx)]
         freqs_row = np.empty((t_len))
-        for i in range(t_len):
-            loc = tuple(np.argwhere(windows==i).T)
-            temp = freqs_wide[loc]
-            freqs_row[i] = np.mean(temp)
+        for i in np.unique(loc_len):
+            freqs_row[loc_len==i] = np.mean(freqs_sub[np.array(list(loc[loc_len==i]), dtype=int)], axis=1)
         
         freqs_m = utils.moving_average_dim(freqs_row, N, 0)
         freqs_m = np.hstack((freqs_m[0]*np.ones(t_len-len(freqs_m)-int(N/2)),\
                              freqs_m,\
                              freqs_m[-1]*np.ones(int(N/2))))
         
-        phis_init = get_phi_init(freqs_m, phis[idx[1], idx[0]], windows[idx[1],0], t_step)
+        phis_init = get_phi_init(freqs_m, phis[tuple(idx)], windows[idx[0],0], t_step)
         
-        phis_wide = phis_init[:,None,:]*np.ones((windows.shape[1]))[None,:,None]
         phis_row = np.empty((t_len, phis.shape[-1]), dtype=complex)
-        for i in range(t_len):
-            loc = tuple(np.argwhere(windows==i).T)
-            temp = phis_wide[loc]
-            a = np.mean(np.abs(temp), axis=0)
-            p = circmean(np.angle(temp), axis=0, high=np.pi, low=-np.pi)
-            phis_row[i] = a*np.exp(1j*p)
+        for i in np.unique(loc_len):
+            temp = phis_init[np.array(list(loc[loc_len==i]), dtype=int)]
+            a = np.mean(np.abs(temp), axis=1)
+            p = circmean(np.angle(temp), axis=1, high=np.pi, low=-np.pi)
+            phis_row[loc_len==i] = a*np.exp(1j*p)
             
         freqs_in = np.insert(freqs_m[:-1],0,0)
         phase_in = np.cumsum(freqs_in * t_step)
@@ -260,7 +265,7 @@ def get_red_init(group_idx, num_windows):
     
     Returns
     -------
-    idx_red : list of reduced indicies where each pair has the mode and list of windows respectively
+    idx_red : list of rows (windows) and columns (modes)
     '''
     idx_red = []
     for j, groups in enumerate(group_idx):
@@ -270,7 +275,8 @@ def get_red_init(group_idx, num_windows):
             temp = np.hstack((np.ones((min_val),dtype=int)*min_val,\
                               g,\
                               np.ones((num_windows-max_val-1),dtype=int)*max_val))
-            idx_red.append([j, temp])
+            idx_red.append([temp, np.ones(len(temp))*j])
+    idx_red = np.array(idx_red, dtype=int)
     return(idx_red)
 
 ###################### Exact Method

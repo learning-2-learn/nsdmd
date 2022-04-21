@@ -66,10 +66,9 @@ def test_group_by_similarity():
 def test_get_red_init():
     group_idx = [[[0,1,2],[3]],[[1]]]
     res = get_red_init(group_idx, 4)
-    ans = [[0, np.array([0, 1, 2, 2])], [0, np.array([3, 3, 3, 3])], [1, np.array([1, 1, 1, 1])]]
-    for i in range(len(res)):
-        assert res[i][0]==ans[i][0]
-        assert np.allclose(res[i][1], ans[i][1])
+    ans = np.array([[np.array([0, 1, 2, 2]), np.zeros(4)], [np.array([3, 3, 3, 3]), np.zeros(4)], \
+                    [np.array([1, 1, 1, 1]),np.ones(4)]])
+    assert np.allclose(res, ans)
     
 def test_get_phi_init():
     f = np.hstack((4*np.ones((500)), 2*np.ones((500))))
@@ -85,7 +84,7 @@ def test_get_phi_init():
 def test_get_soln():
     freqs = np.array([[4,-4],[4,-4],[2,-2],[2,-2]])
     phi = np.array([[[1,2,3], [1,2,3]], [[1,2,3], [1,2,3]], [[1,2,3],[1,2,3]], [[-1,-2,-3],[-1,-2,-3]]])
-    idxs = [[0,np.arange(4)], [1,np.arange(4)]]
+    idxs = np.array([[np.arange(4), np.zeros(4)], [np.arange(4), np.ones(4)]], dtype=int)
     t_len = 1000
     N = 1
     t_step = 0.001
