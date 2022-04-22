@@ -173,7 +173,7 @@ def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
 
     return(freqs, phis, windows)
 
-##################### Processing steps (new (add tests!!!))
+##################### Processing steps
 
 def get_phi_init(freqs, phi, offsets, t_step):
     '''
@@ -231,7 +231,15 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
     freqs_sub = freqs[idx]
     freqs_all = np.empty((len(idxs), t_len))
     for i in np.unique(loc_len):
-        freqs_all[:,loc_len==i] = np.mean(freqs_sub[:,np.array(list(loc[loc_len==i]), dtype=int)], axis=2)
+        for l in np.unique(loc[loc_len==i]):
+            if type(l)==list:
+                temp = np.array(l)
+            else:
+                temp = np.array([l])
+            temp_i = np.argwhere(np.all(temp==np.array(list(loc[loc_len==i])), axis=1))[:,0]
+            temp_ii = np.argwhere(loc_len==i)[:,0][temp_i]
+            temp_f = np.mean(freqs_sub[:,temp], axis=1)
+            freqs_all[:,temp_ii] = temp_f[:,None]
     
     freqs_m = utils.moving_average_dim(freqs_all, N, 1)
     freqs_m = np.hstack((freqs_m[:,0][:,None]*np.ones(t_len-freqs_m.shape[1]-int(N/2))[None,:],\
@@ -244,11 +252,17 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
     
     phis_all = np.empty((len(idxs), t_len, phis.shape[-1]), dtype=complex)
         
-    for i in np.unique(loc_len[loc_len>0]):
-        temp = phis_init[:,np.array(list(loc[loc_len==i]), dtype=int)]
-        a = np.mean(np.abs(temp), axis=2)
-        p = circmean(np.angle(temp), axis=2, high=np.pi, low=-np.pi)
-        phis_all[:,loc_len==i] = a*np.exp(1j*p)
+    for i in np.unique(loc_len):
+        for l in np.unique(loc[loc_len==i]):
+            if type(l)==list:
+                temp = np.array(l)
+            else:
+                temp = np.array([l])
+            temp_i = np.argwhere(np.all(temp==np.array(list(loc[loc_len==i])), axis=1))[:,0]
+            temp_ii = np.argwhere(loc_len==i)[:,0][temp_i]
+            temp_pa = np.mean(np.abs(phis_init[:,temp]), axis=1)
+            temp_pp = circmean(np.angle(phis_init[:,temp]), axis=1)
+            phis_all[:,temp_ii] = (temp_pa * np.exp(1j*temp_pp))[:,None,:]
             
     freqs_in = np.insert(freqs_m[:,:-1],0,np.zeros(len(idxs)), axis=1)
     phase_in = np.cumsum(freqs_in * t_step, axis=1)
