@@ -6,7 +6,7 @@ from scipy.stats import circmean
 ################## Classes
 
 class NSDMD():
-    def __init__(self, opt_win=500, opt_stride=100, opt_rank=20, \
+    def __init__(self, opt_win=500, opt_stride=100, opt_rank=20, bandpass_trim=500, \
                  sim_thresh_freq=0.2, sim_thresh_phi_amp=0.95, drift_N=51,\
                  exact_var_thresh=0.01, exact_N=20,\
                  grad_alpha=0.1, grad_beta=0.1, grad_N=20, grad_lr=0.01, grad_maxiter=100,\
@@ -14,6 +14,7 @@ class NSDMD():
         self.opt_win = opt_win
         self.opt_stride = opt_stride
         self.opt_rank = opt_rank
+        self.bandpass_trim = bandpass_trim
         self.sim_thresh_freq = sim_thresh_freq
         self.sim_thresh_phi_amp = sim_thresh_phi_amp
         self.drift_N = drift_N
@@ -27,12 +28,52 @@ class NSDMD():
         self.grad_fit_coupling = grad_fit_coupling
         self.verbose = verbose
         
-    def fit_opt(self, x, t, initial_freq_guess=None):
-        f, p, w = opt_dmd_win(x, t, self.opt_win, self.opt_stride, self.opt_rank, initial_freq_guess)
-        self.freqs_ = f
-        self.phis_ = p
-        self.windows_ = w
-        self.offsets_ = t[self.windows_[:,0]][:,None]*np.ones((self.freqs_.shape[1]), dtype=int)[None,:]
+    def fit_opt(self, x, t, t_step, initial_freq_guess=None, bandpass=None):
+        if bandpass is None:
+            f, p, w = opt_dmd_win(x, t, self.opt_win, self.opt_stride, self.opt_rank, initial_freq_guess)
+            self.freqs_ = f
+            self.phis_ = p
+            self.windows_ = w
+            self.offsets_ = t[self.windows_[:,0]][:,None]*np.ones((self.freqs_.shape[1]), dtype=int)[None,:]
+        else:
+            bandpass = np.array(bandpass)
+            assert len(bandpass.shape)==2, "Must be 2 dimensional"
+            assert bandpass.shape[1]==2, "Second dimension needs to be of length 2"
+            
+            t = t.copy()[self.bandpass_trim:-self.bandpass_trim]
+            freqs = []
+            phis = []
+            for i, bp in enumerate(bandpass):
+                if self.verbose:
+                    print(bp)
+                temp = utils.butter_pass_filter(x.copy(), bp[0], int(1/t_step), 'high')
+                temp2 = utils.butter_pass_filter(temp, bp[1], int(1/t_step), 'low')
+                x_filt = temp2 / np.std(temp2, axis=-1)[:,None]
+                x_filt = x_filt[:,self.bandpass_trim:-self.bandpass_trim]
+                
+                if initial_freq_guess is None:
+                    guess = np.random.rand(int(np.ceil(self.opt_rank/2))) * (bp[1]-bp[0]) + bp[0]
+                    guess = np.hstack([[g,-g] for g in guess])
+                    guess = guess[:self.opt_rank]
+                else:
+                    print('TODO')
+                    guess = np.random.rand(int(np.ceil(self.opt_rank/2))) * (bp[1]-bp[0]) + bp[0]
+                    guess = np.hstack([[g,-g] for g in guess])
+                    guess = guess[:self.opt_rank]
+                
+                f, p, w = opt_dmd_win(x_filt, t, self.opt_win, self.opt_stride, self.opt_rank, guess)
+                idx = (np.abs(f)<bp[0]) | (np.abs(f)>bp[1])
+                f[idx] = 0
+                p[idx] = 0
+                f = f[:,~np.all(f == 0, axis = 0)]
+                p = p[:,~np.all(np.all(p==0, axis=0), axis=1)]
+                freqs.append(f)
+                phis.append(p)
+            self.freqs_ = np.hstack(freqs)
+            self.phis_ = np.hstack(phis)
+            self.windows_ = w
+            self.offsets_ = t[self.windows_[:,0]][:,None]*np.ones((self.freqs_.shape[1]), dtype=int)[None,:]
+                    
         return self
     
     def set_opt_values(self, freqs, phis, windows, offsets):
@@ -46,10 +87,12 @@ class NSDMD():
         group_idx = group_by_similarity(self.freqs_, self.phis_, self.sim_thresh_freq, self.sim_thresh_phi_amp)
         
         idx_init = get_red_init(group_idx, len(self.windows_))
+        idx_init = idx_init[~np.all(self.freqs_[tuple(np.transpose(idx_init, [1,0,2]))]==0, axis=1)]
         soln, _, _ = get_soln(self.freqs_, self.phis_, idx_init, t_len, self.windows_, self.drift_N, t_step)
         
         B,f = exact_Bf(x, soln)
         idxs, self.errors_ = exact_f_greedy(B,f,soln,x,self.exact_N, self.exact_var_thresh, self.verbose)
+        # idxs = [np.arange(len(soln))]
         self.idx_red_ = [idx_init[idx] for idx in idxs]
         return self
     
@@ -201,7 +244,7 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
     
     phis_all = np.empty((len(idxs), t_len, phis.shape[-1]), dtype=complex)
         
-    for i in np.unique(loc_len):
+    for i in np.unique(loc_len[loc_len>0]):
         temp = phis_init[:,np.array(list(loc[loc_len==i]), dtype=int)]
         a = np.mean(np.abs(temp), axis=2)
         p = circmean(np.angle(temp), axis=2, high=np.pi, low=-np.pi)
