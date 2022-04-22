@@ -1,5 +1,7 @@
 import numpy as np
 import colorednoise
+from scipy.signal import butter
+from scipy.signal import filtfilt
 
 #################### Random Functions
 
@@ -16,7 +18,10 @@ def cos_dist(a,b):
     -------
     cos_dist : cosine distnace between two arrays
     '''
-    cos_dist = np.dot(a, b)/(np.linalg.norm(a)*np.linalg.norm(b))
+    if np.all(a==0) or np.all(b==0):
+        cos_dist = 0
+    else:
+        cos_dist = np.dot(a, b)/(np.linalg.norm(a)*np.linalg.norm(b))
     return(cos_dist)
 
 def demean_mat(mat):
@@ -69,6 +74,49 @@ def _moving_average(a, n):
     ret = np.cumsum(a, dtype=float)
     ret[n:] = ret[n:] - ret[:-n]
     return ret[n - 1:] / n
+
+###################### For filtering
+
+def butter_pass_filter(data, cutoff, fs, btype, order=5, axis=-1):
+    """ 
+    Butter pass filters a signal with a butter filter
+    
+    Parameters
+    ----------
+    data: the signal to filter
+    cutoff: the cutoff frequency
+    fs: sampling rate
+    btype: either \'high\' or \'low\', determines low pass or high pass filter
+    order: the order of the filter
+    axis: axis to apply the filter
+        
+    Returns
+    -------
+    Either high or low pass filtered data
+    """
+    b, a = _butter_pass(cutoff, fs, btype, order=order)
+    y = filtfilt(b, a, data, axis=axis)
+    return y
+
+def _butter_pass(cutoff, fs, btype, order=5):
+    """ 
+    Builds a butter pass filter
+    
+    Parameters
+    ----------
+    cutoff: the cutoff frequency
+    fs: sampling rate
+    btype: either \'high\' or \'low\', determines low pass or high pass filter
+    order: the order of the filter
+        
+    Returns
+    -------
+    Either high or low pass filtered
+    """
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype=btype, analog=False)
+    return b, a
 
 ###################### For simulations
 

@@ -8,6 +8,14 @@ from nsdmd.utils import make_network
 from nsdmd.utils import create_decay
 from nsdmd.utils import add_noise
 from nsdmd.utils import moving_average_dim
+from nsdmd.utils import butter_pass_filter
+from nsdmd.utils import _butter_pass
+
+def test_butter_pass_filter():
+    assert False, "TODO"
+    
+def test__buter_pass():
+    assert False, "TODO"
 
 def test_cos_dist():
     ans_1 = 0.0
