@@ -94,12 +94,12 @@ class NSDMD():
         
         idx_init = get_red_init(group_idx, len(self.windows_))
         idx_init = idx_init[~np.all(self.freqs_[tuple(np.transpose(idx_init, [1,0,2]))]==0, axis=1)]
-        soln, freqs, _ = get_soln(self.freqs_, self.phis_, idx_init, t_len, self.windows_, self.drift_N, t_step)
+        soln, freqs, phis = get_soln(self.freqs_, self.phis_, idx_init, t_len, self.windows_, self.drift_N, t_step)
         
         if self.grad_fit_coupling:
             freq_mean = np.mean(freqs, axis=1)
             p = circmean(np.angle(phis), axis=1, high=np.pi, low=-np.pi)
-            delay = np.array(np.round(p / (2 * np.pi * self.freq_mean_[:,None]) / t_step), dtype=int)
+            delay = np.array(np.round(p / (2 * np.pi * freq_mean[:,None]) / t_step), dtype=int)
         else:
             delay = None
         
