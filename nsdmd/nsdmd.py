@@ -9,7 +9,7 @@ class NSDMD():
     def __init__(self, opt_win=500, opt_stride=100, opt_rank=20, bandpass_trim=500, \
                  sim_thresh_freq=0.2, sim_thresh_phi_amp=0.95, drift_N=51,\
                  exact_var_thresh=0.01, feature_N=20, feature_seq_method='SBS', feature_f_method='exact',\
-                 feature_maxiter=5, feature_final_num=None,\
+                 feature_maxiter=5, feature_final_num=None, feature_maxiter_float=1,\
                  grad_alpha=0.1, grad_beta=0.1, grad_N=20, grad_lr=0.01, grad_maxiter=100,\
                  grad_fit_coupling=False, verbose=False):
         self.opt_win = opt_win
@@ -25,6 +25,7 @@ class NSDMD():
         self.feature_f_method = feature_f_method
         self.feature_maxiter = feature_maxiter
         self.feature_final_num = feature_final_num
+        self.feature_maxiter_float = feature_maxiter_float
         self.grad_alpha = grad_alpha
         self.grad_beta = grad_beta
         self.grad_N = grad_N
@@ -103,7 +104,8 @@ class NSDMD():
             delay = None
         
         idxs, self.errors_, self.num_modes_ = feature_selector(soln, x, self.feature_N, self.feature_final_num,\
-                                              self.feature_seq_method, self.feature_f_method,\
+                                              self.feature_seq_method, self.feature_f_method, \
+                                              self.feature_maxiter_float, \
                                               self.exact_var_thresh, self.grad_alpha, self.grad_beta, self.grad_lr,\
                                               self.feature_maxiter, self.grad_fit_coupling, delay, self.verbose)
         
@@ -112,7 +114,7 @@ class NSDMD():
     
     def fit_f(self, x, t_len, t_step, idx_num):
         if np.any(self.num_modes_==idx_num):
-            self.idx_hat_ = self.idx_red_[np.argwhere(self.num_modes_==idx_num)[0,0]]
+            self.idx_hat_ = self.idx_red_[np.argwhere(self.num_modes_==idx_num)[-1,0]]
         else:
             print('Num modes requested has not been calculated, returning...')
             return self
@@ -403,7 +405,7 @@ def exact_f_from_Bf(B, f, N, var_thresh=0.01):
 
 #################### Reduction Method
 
-def feature_selector(soln, x, feature_N, final_num=None, seq_method='SBS', f_method='exact', \
+def feature_selector(soln, x, feature_N, final_num=None, seq_method='SBS', f_method='exact', maxiter_float=1, \
                      exact_var_thresh=0.01, grad_alpha=0.1, grad_beta=0.1, grad_lr=0.01, \
                      maxiter=5, grad_fit_coupling=False, grad_delay=None, verbose=True):
     '''
@@ -412,18 +414,52 @@ def feature_selector(soln, x, feature_N, final_num=None, seq_method='SBS', f_met
     http://rasbt.github.io/mlxtend/user_guide/feature_selection/SequentialFeatureSelector/
     
     Global modulation methods include exact, and grad, described in the paper
+    
+    Parameters
+    ----------
+    soln : solutions with shape (num modes, num chan, time)
+    x : true data with shape (num chan, time)
+    feature_N : amount of averaging to do on global modulation f
+    final_num : end number of modes to stop computing feature selection
+    seq_method : method of sequential feature selection
+    f_method : method of exact or gradient descent
+    maxiter_float : parameter to  stop sequential selector from repeating too many times
+    exact_var_thresh : threshold for exact method
+    grad_alpha : alpha for gradient descent
+    grad_beta : beta for gradient descent
+    grad_lr : lr for gradient descent
+    maxiter : how many runs for quick gradient descent
+    grad_fit_coupling : whether to fit coupling for gradient descent
+    grad_delay : coupling delay for gradient descent
+    verbose : flag to show comments as it's processing
+    
+    Returns
+    -------
+    idxs : list of idxs used in feature selection
+    errors : list of errors for each step
+    num_modes : number of modes for each step
     '''
     if f_method=='exact' or f_method=='grad':
         if seq_method=='SBS':
-            idxs, errors, num_modes, = _SBS(soln, x, f_method, feature_N, final_num, exact_var_thresh, \
-                                            grad_alpha, grad_beta, grad_lr,\
+            floating = False
+            idxs, errors, num_modes, = _SBS(soln, x, f_method, feature_N, final_num, floating, maxiter_float, \
+                                            exact_var_thresh, grad_alpha, grad_beta, grad_lr,\
                                             maxiter, grad_fit_coupling, grad_delay, verbose)
         elif seq_method=='SFS':
-            print('TODO')
+            floating = False
+            idxs, errors, num_modes, = _SFS(soln, x, f_method, feature_N, final_num, floating, maxiter_float, \
+                                            exact_var_thresh, grad_alpha, grad_beta, grad_lr,\
+                                            maxiter, grad_fit_coupling, grad_delay, verbose)
         elif seq_method=='SBFS':
-            print('TODO')
+            floating = True
+            idxs, errors, num_modes, = _SBS(soln, x, f_method, feature_N, final_num, floating, maxiter_float, \
+                                            exact_var_thresh, grad_alpha, grad_beta, grad_lr,\
+                                            maxiter, grad_fit_coupling, grad_delay, verbose)
         elif seq_method=='SFFS':
-            print('TODO')
+            floating = True
+            idxs, errors, num_modes, = _SFS(soln, x, f_method, feature_N, final_num, floating, maxiter_float, \
+                                            exact_var_thresh, grad_alpha, grad_beta, grad_lr,\
+                                            maxiter, grad_fit_coupling, grad_delay, verbose)
         else:
             idxs = []
             errors = []
@@ -435,10 +471,39 @@ def feature_selector(soln, x, feature_N, final_num=None, seq_method='SBS', f_met
     
     return idxs, errors, num_modes
     
-def _SBS(soln, x, f_method, N, final_num=None, exact_var_thresh=0.01, \
+def _SBS(soln, x, f_method, N, final_num=None, floating=False, maxiter_float=1, exact_var_thresh=0.01, \
          grad_alpha=0.1, grad_beta=0.1, grad_lr=0.01, maxiter=5, grad_fit_coupling=False, grad_delay=None,\
          verbose=True):
+    '''
+    Sequential methods: SBS and SBFS, described here:
+    http://rasbt.github.io/mlxtend/user_guide/feature_selection/SequentialFeatureSelector/
     
+    Global modulation methods include exact, and grad, described in the paper
+    
+    Parameters
+    ----------
+    soln : solutions with shape (num modes, num chan, time)
+    x : true data with shape (num chan, time)
+    f_method : method of exact or gradient descent
+    N : amount of averaging to do on global modulation f
+    final_num : end number of modes to stop computing feature selection
+    floating : whether to use floating method or not
+    maxiter_float : parameter to  stop sequential selector from repeating too many times
+    exact_var_thresh : threshold for exact method
+    grad_alpha : alpha for gradient descent
+    grad_beta : beta for gradient descent
+    grad_lr : lr for gradient descent
+    maxiter : how many runs for quick gradient descent
+    grad_fit_coupling : whether to fit coupling for gradient descent
+    grad_delay : coupling delay for gradient descent
+    verbose : flag to show comments as it's processing
+    
+    Returns
+    -------
+    idx_all : list of idxs used in feature selection
+    total_error : list of errors for each step
+    num_modes : number of modes for each step
+    '''
     if verbose:
         print('Number of modes: ' + str(soln.shape[0]) + '/' + str(soln.shape[0]))
     if f_method=='grad':
@@ -452,17 +517,24 @@ def _SBS(soln, x, f_method, N, final_num=None, exact_var_thresh=0.01, \
     total_error = [get_reconstruction_error(x, x_rec)]
     
     if final_num is None or final_num > soln.shape[0] or final_num <= 0:
-        final_num = 1
+        final_num = 0
     elif final_num==soln.shape[0]:
-        final_num += 1
+        final_num = soln.shape[0] - 1
         
     idx = np.arange(soln.shape[0])
+    idx_excluded = []
     idx_all = [idx]
     num_modes = [soln.shape[0]]
     
-    for i in range(soln.shape[0],final_num,-1):
+    i = soln.shape[0] - 1
+    i_last = soln.shape[0]
+    
+    while(final_num != i):
         if verbose:
-            print('Number of modes: ' + str(i-1) + '/' + str(soln.shape[0]))
+            print('Number of modes: ' + str(i) + '/' + str(soln.shape[0]))
+        if i_last == i+1:
+            num_float = 0
+            i_last = i
         
         error = np.empty(len(idx))
         for j, r in enumerate(idx):
@@ -480,9 +552,145 @@ def _SBS(soln, x, f_method, N, final_num=None, exact_var_thresh=0.01, \
             error[j] = get_reconstruction_error(x, x_rec)
 
         total_error.append(np.max(error))
+        idx_excluded.append(idx[np.argmax(error)])
         idx = idx[np.arange(len(idx))!=np.argmax(error)]
         idx_all.append(idx)
-        num_modes.append(i-1)
+        num_modes.append(i)
+        
+        flag_float = True
+        while (floating and flag_float and i < soln.shape[0]-1 and num_float!=maxiter_float):
+            error = np.empty(len(idx_excluded))
+            for j, r in enumerate(np.array(idx_excluded)):
+                idx_sub = np.array(list(idx) + [r])
+                if f_method=='grad':
+                    f_hat = grad_f(x, soln[idx_sub], grad_alpha, grad_beta, N, grad_lr,\
+                                   maxiter, grad_fit_coupling, grad_delay)
+                    f_hat = grad_f_amp(f_hat, soln[idx_sub], x)
+                else:
+                    f_sub = f[idx_sub]
+                    B_sub = np.array([b[idx_sub] for b in B[idx_sub]])
+                    f_hat = exact_f_from_Bf(B_sub, f_sub, N, var_thresh=exact_var_thresh)
+
+                x_rec = get_reconstruction(soln[idx_sub], f_hat)
+                error[j] = get_reconstruction_error(x, x_rec)
+
+            if np.max(error) > total_error[-1]:
+                total_error.append(np.max(error))
+                idx = np.insert(idx, 0, np.array(idx_excluded)[np.argmax(error)])
+                idx_excluded = np.array(idx_excluded)[np.arange(len(idx_excluded))!=np.argmax(error)]
+                idx_all.append(idx)
+                idx_excluded = list(idx_excluded)
+                i = i + 1
+                num_modes.append(i)
+            else:
+                flag_float = False
+            num_float += 1
+        i -= 1
+    
+    num_modes = np.array(num_modes)
+    return(idx_all, total_error, num_modes)
+
+def _SFS(soln, x, f_method, N, final_num=None, floating=False, maxiter_float=1, exact_var_thresh=0.01, \
+         grad_alpha=0.1, grad_beta=0.1, grad_lr=0.01, maxiter=5, grad_fit_coupling=False, grad_delay=None,\
+         verbose=True):
+    '''
+    Sequential methods: SFS and SFFS, described here:
+    http://rasbt.github.io/mlxtend/user_guide/feature_selection/SequentialFeatureSelector/
+    
+    Global modulation methods include exact, and grad, described in the paper
+    
+    Parameters
+    ----------
+    soln : solutions with shape (num modes, num chan, time)
+    x : true data with shape (num chan, time)
+    f_method : method of exact or gradient descent
+    N : amount of averaging to do on global modulation f
+    final_num : end number of modes to stop computing feature selection
+    floating : whether to use floating method or not
+    maxiter_float : parameter to  stop sequential selector from repeating too many times
+    exact_var_thresh : threshold for exact method
+    grad_alpha : alpha for gradient descent
+    grad_beta : beta for gradient descent
+    grad_lr : lr for gradient descent
+    maxiter : how many runs for quick gradient descent
+    grad_fit_coupling : whether to fit coupling for gradient descent
+    grad_delay : coupling delay for gradient descent
+    verbose : flag to show comments as it's processing
+    
+    Returns
+    -------
+    idx_all : list of idxs used in feature selection
+    total_error : list of errors for each step
+    num_modes : number of modes for each step
+    '''
+    if final_num is None or final_num > soln.shape[0] or final_num <= 0:
+        final_num = soln.shape[0]
+        
+    idx = []
+    idx_used = np.arange(soln.shape[0])
+    total_error = []
+    idx_all = []
+    num_modes = []
+    
+    termination_num = final_num+1
+    i = 1
+    i_last = 0
+    
+    while(termination_num != i):
+        if verbose:
+            print('Number of modes: ' + str(i) + '/' + str(soln.shape[0]))
+        if i_last == i-1:
+            num_float = 0
+            i_last = i
+        
+        error = np.empty(len(idx_used))
+        for j, r in enumerate(idx_used):
+            idx_sub = np.array(idx + [r])
+            if f_method=='grad':
+                f_hat = grad_f(x, soln[idx_sub], grad_alpha, grad_beta, N, grad_lr,\
+                               maxiter, grad_fit_coupling, grad_delay)
+                f_hat = grad_f_amp(f_hat, soln[idx_sub], x)
+            else:
+                B_sub, f_sub = exact_Bf(x, soln[idx_sub])
+                f_hat = exact_f_from_Bf(B_sub, f_sub, N, var_thresh=exact_var_thresh)
+
+            x_rec = get_reconstruction(soln[idx_sub], f_hat)
+            error[j] = get_reconstruction_error(x, x_rec)
+
+        total_error.append(np.max(error))
+        idx = idx + [idx_used[np.argmax(error)]]
+        idx_used = idx_used[np.arange(len(idx_used))!=np.argmax(error)]
+        idx_all.append(np.array(idx))
+        num_modes.append(i)
+        
+        flag_float = True
+        while (floating and flag_float and i > 1 and num_float!=maxiter_float):
+            error = np.empty(len(idx))
+            for j, r in enumerate(np.array(idx)):
+                idx_sub = np.array(idx)[np.array(idx)!=r]
+                if f_method=='grad':
+                    f_hat = grad_f(x, soln[idx_sub], grad_alpha, grad_beta, N, grad_lr,\
+                                   maxiter, grad_fit_coupling, grad_delay)
+                    f_hat = grad_f_amp(f_hat, soln[idx_sub], x)
+                else:
+                    B_sub, f_sub = exact_Bf(x, soln[idx_sub])
+                    f_hat = exact_f_from_Bf(B_sub, f_sub, N, var_thresh=exact_var_thresh)
+                    
+                x_rec = get_reconstruction(soln[idx_sub], f_hat)
+                error[j] = get_reconstruction_error(x, x_rec)
+
+            if np.max(error) > total_error[-1]:
+                total_error.append(np.max(error))
+                idx_used = np.insert(idx_used, 0, idx[np.argmax(error)])
+                idx = np.array(idx)[np.arange(len(idx))!=np.argmax(error)]
+                idx_all.append(idx)
+                idx = list(idx)
+                i = i - 1
+                num_modes.append(i)
+            else:
+                flag_float = False
+            num_float += 1
+        i += 1
     
     num_modes = np.array(num_modes)
     return(idx_all, total_error, num_modes)

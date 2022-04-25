@@ -12,6 +12,9 @@ from nsdmd.nsdmd import grad_f_init
 from nsdmd.nsdmd import grad_f_grad_loss
 from nsdmd.nsdmd import grad_f
 from nsdmd.nsdmd import grad_f_amp
+from nsdmd.nsdmd import feature_selector
+from nsdmd.nsdmd import _SBS
+from nsdmd.nsdmd import _SFS
 
 def test_opt_dmd_win():
     #freqs are 1,-1,2,-2
@@ -154,22 +157,6 @@ def test_get_reconstruction_error():
     res = get_reconstruction_error(x, y)
     assert ans==res
     
-# def test_exact_f_greedy():
-#     x1 = np.arange(1,2)[:,None]*np.cos(np.arange(4)*0.001*2*np.pi)[None,:]
-#     x2 = np.arange(2,1,-1)[:,None]*np.cos(np.arange(4)*0.001*2*np.pi)[None,:]
-    
-#     x = x1 + x2
-#     s = np.vstack((x1[None,:,:], x2[None,:,:]))
-#     B = np.array([[[1,1,1,1],[2,2,2,2]], [[0.5,0.5,0.5,0.5],[1,1,1,1]]])
-#     f = np.array([[3,3,3,3],[1.5,1.5,1.5,1.5]])
-    
-#     res_i, res_e = exact_f_greedy(B,f,s,x,1,verbose=False)
-    
-#     assert np.allclose(res_i[0], np.array([0,1])), "indexing issue"
-#     assert len(res_i[1])==1, "indexing issue"
-#     assert res_i[1][0]==0 or res_i[1][0]==1, "indexing issue"
-#     assert np.allclose(res_e, np.ones((2)), 0.0001)
-    
 def test_grad_f_init():
     x1 = np.arange(1,2)[:,None]*np.ones(4)[None,:]
     x2 = np.arange(2,1,-1)[:,None]*np.ones(4)[None,:]
@@ -254,3 +241,27 @@ def test_grad_f_amp():
     res = grad_f_amp(f, s, x)
     ans = np.ones((2,2,400))
     assert np.allclose(res, ans), "Problem with amplitude fixes (3 dim)"
+    
+def test_feature_selector():
+    assert False, "TODO"
+
+def test__SBS():
+    x1 = np.arange(1,2)[:,None]*np.cos(np.arange(4)*0.001*2*np.pi)[None,:]
+    x2 = np.arange(2,1,-1)[:,None]*np.cos(np.arange(4)*0.001*2*np.pi)[None,:]
+    x = x1 + x2
+    s = np.vstack((x1[None,:,:], x2[None,:,:]))
+    
+    res_i, res_e, res_n = _SBS(s, x, 'exact', 1, verbose=False)
+    ans_n = np.array([2,1])
+    
+    assert np.allclose(res_i[0], np.array([0,1])), "indexing issue"
+    assert len(res_i[1])==1, "indexing issue"
+    assert res_i[1][0]==0 or res_i[1][0]==1, "indexing issue"
+    assert np.allclose(res_e, np.ones((2)), 0.0001), "error issue"
+    assert np.allclose(ans_n, res_n)
+    
+    assert False, 'TODO floating test'
+    
+def test__SFS():
+    
+    assert False, 'TODO'
