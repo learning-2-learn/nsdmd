@@ -8,7 +8,7 @@ from scipy.stats import circmean
 class NSDMD():
     def __init__(self, opt_win=500, opt_stride=100, opt_rank=20, bandpass_trim=500, \
                  sim_thresh_freq=0.2, sim_thresh_phi_amp=0.95, drift_N=51,\
-                 exact_var_thresh=0.01, exact_N=20,\
+                 exact_var_thresh=0.01, feature_N=20, feature_seq_method='SBS', feature_f_method='exact',\
                  grad_alpha=0.1, grad_beta=0.1, grad_N=20, grad_lr=0.01, grad_maxiter=100,\
                  grad_fit_coupling=False, verbose=False):
         self.opt_win = opt_win
@@ -19,7 +19,9 @@ class NSDMD():
         self.sim_thresh_phi_amp = sim_thresh_phi_amp
         self.drift_N = drift_N
         self.exact_var_thresh = exact_var_thresh
-        self.exact_N = exact_N
+        self.feature_N = feature_N
+        self.feature_seq_method = feature_seq_method
+        self.feature_f_method = feature_f_method
         self.grad_alpha = grad_alpha
         self.grad_beta = grad_beta
         self.grad_N = grad_N
@@ -90,9 +92,10 @@ class NSDMD():
         idx_init = idx_init[~np.all(self.freqs_[tuple(np.transpose(idx_init, [1,0,2]))]==0, axis=1)]
         soln, _, _ = get_soln(self.freqs_, self.phis_, idx_init, t_len, self.windows_, self.drift_N, t_step)
         
-        B,f = exact_Bf(x, soln)
-        idxs, self.errors_ = exact_f_greedy(B,f,soln,x,self.exact_N, self.exact_var_thresh, self.verbose)
-        # idxs = [np.arange(len(soln))]
+        idxs, self.errors_ = feature_selector(soln, x, self.feature_N,\
+                                              self.feature_seq_method, self.feature_f_method,\
+                                              self.exact_var_thresh, self.verbose)
+        
         self.idx_red_ = [idx_init[idx] for idx in idxs]
         return self
     
@@ -355,7 +358,7 @@ def exact_Bf(x, soln):
     return(B, f)
 
 
-def exact_f_from_Bf(B, f, var_thresh=0.01):
+def exact_f_from_Bf(B, f, N, var_thresh=0.01):
     '''
     Gets the f_hat from the estimated f and B matrix in the exact method
     
@@ -363,6 +366,7 @@ def exact_f_from_Bf(B, f, var_thresh=0.01):
     ----------
     B : B matrix from exact method
     f : approximate f from exact method
+    N : amount to average over
     var_thresh : variance threshold of eigenvalues to not be considered noise
     
     Returns
@@ -377,57 +381,78 @@ def exact_f_from_Bf(B, f, var_thresh=0.01):
         idx = s**2 / (s@s) > var_thresh
         B_inv = vh.T[:,idx] @ np.diag(1./s[idx]) @ u.T[idx]
         f_hat[:,t] = B_inv @ f_sub
-    return(f_hat)
-
-def exact_f_greedy(B, f, soln, x, N, var_thresh=0.01, verbose=True):
-    '''
-    Computes f with a greedy forward elimination algorithm for every round of modes removed
-    Uses the exact method
-    
-    Parameters
-    ----------
-    B : B matrix from exact method
-    f : estimated f from exact method
-    soln : solutions that are indexed the same as B and f
-    x : original data matrix
-    N : amount of averaging on either side of point interested in
-    var_thresh : variance threshold of eigenvalues to not be considered noise
-    verbose : let's you know how far in the fitting process you are
-    
-    Returns
-    -------
-    idx_all : list of indicies, corresponding to each run of the greedy algorithm
-    total_error : error for each run of the greedy algorithm
-    '''
-    idx_all = []
-
-    f_hat = exact_f_from_Bf(B,f)
+        
     f_hat[:,N:-N] = utils.moving_average_dim(f_hat,2*N+1,1)
     f_hat[f_hat<0] = 0
+    return(f_hat)
+
+#################### Reduction Method
+
+def feature_selector(soln, x, feature_N, seq_method='SBS', f_method='exact', exact_var_thresh=0.01, verbose=True):
+    '''
+    Wrapper to compute feature selection.
+    Sequential methods include SBS, SFS, SBFS, and SFFS, described here:
+    http://rasbt.github.io/mlxtend/user_guide/feature_selection/SequentialFeatureSelector/
+    
+    Global modulation methods include exact, and grad, described in the paper
+    '''
+    if f_method=='exact' or f_method=='grad':
+        if seq_method=='SBS':
+            idxs, errors = _SBS(soln, x, f_method, feature_N, exact_var_thresh, verbose)
+        elif seq_method=='SFS':
+            print('TODO')
+        elif seq_method=='SBFS':
+            print('TODO')
+        elif seq_method=='SFFS':
+            print('TODO')
+        else:
+            idxs = []
+            errors = []
+            print('Incorrect sequential method, must be SBS, SFS, SBFS, or SFFS')
+    else:
+        idxs = []
+        errors = []
+        print('Incorrect global modulation method, must be exact or grad')
+    
+    return idxs, errors
+    
+def _SBS(soln, x, f_method, N, exact_var_thresh=0.01, verbose=True):
+    idx_all = []
+    
+    if f_method=='grad':
+        print('TODO')
+    else:
+        B,f = exact_Bf(x, soln)
+        f_hat = exact_f_from_Bf(B, f, N, var_thresh=exact_var_thresh)
+    
     x_rec = get_reconstruction(soln, f_hat)
     total_error = [get_reconstruction_error(x, x_rec)]
-
-    for i in range(f.shape[0]):
+    
+    for i in range(soln.shape[0]):
         if verbose:
-            print(str(i) + '/' + str(f.shape[0]))
+            print(str(i) + '/' + str(soln.shape[0]))
         if i==0:
-            idx = np.arange(f.shape[0])
+            idx = np.arange(soln.shape[0])
         else:
             idx = idx[np.arange(len(idx))!=np.argmax(error)]
         idx_all.append(idx)
-
+        
         if(len(idx)>1):
             error = np.empty(len(idx))
             for j, r in enumerate(idx):
                 idx_sub = idx[idx!=r]
-                f_sub = f[idx_sub]
-                B_sub = np.array([b[idx_sub] for b in B[idx_sub]])
-                f_hat = exact_f_from_Bf(B_sub,f_sub, var_thresh=var_thresh)
-                f_hat[:,N:-N] = utils.moving_average_dim(f_hat,2*N+1,1)
-                f_hat[f_hat<0] = 0
+                if f_method=='grad':
+                    print('TODO')
+                else:
+                    f_sub = f[idx_sub]
+                    B_sub = np.array([b[idx_sub] for b in B[idx_sub]])
+                    f_hat = exact_f_from_Bf(B_sub, f_sub, N, var_thresh=exact_var_thresh)
+                
                 x_rec = get_reconstruction(soln[idx_sub], f_hat)
                 error[j] = get_reconstruction_error(x, x_rec)
+                
             total_error.append(np.max(error))
+    
     return(idx_all, total_error)
 
 ###################### Gradient Descent

@@ -8,7 +8,6 @@ from nsdmd.nsdmd import exact_Bf
 from nsdmd.nsdmd import exact_f_from_Bf
 from nsdmd.nsdmd import get_reconstruction
 from nsdmd.nsdmd import get_reconstruction_error
-from nsdmd.nsdmd import exact_f_greedy
 from nsdmd.nsdmd import grad_f_init
 from nsdmd.nsdmd import grad_f_grad_loss
 from nsdmd.nsdmd import grad_f
@@ -124,9 +123,10 @@ def test_exact_Bf():
 def test_exact_f_from_Bf():
     B = np.array([[[2],[1]],[[1],[2]]])
     f = np.array([[4],[5]])
+    N = 1
     ans = np.array([[1],[2]])
     
-    res = exact_f_from_Bf(B,f)
+    res = exact_f_from_Bf(B,f,N)
     assert np.allclose(ans, res)
     
 def test_get_reconstruction():
@@ -154,21 +154,21 @@ def test_get_reconstruction_error():
     res = get_reconstruction_error(x, y)
     assert ans==res
     
-def test_exact_f_greedy():
-    x1 = np.arange(1,2)[:,None]*np.cos(np.arange(4)*0.001*2*np.pi)[None,:]
-    x2 = np.arange(2,1,-1)[:,None]*np.cos(np.arange(4)*0.001*2*np.pi)[None,:]
+# def test_exact_f_greedy():
+#     x1 = np.arange(1,2)[:,None]*np.cos(np.arange(4)*0.001*2*np.pi)[None,:]
+#     x2 = np.arange(2,1,-1)[:,None]*np.cos(np.arange(4)*0.001*2*np.pi)[None,:]
     
-    x = x1 + x2
-    s = np.vstack((x1[None,:,:], x2[None,:,:]))
-    B = np.array([[[1,1,1,1],[2,2,2,2]], [[0.5,0.5,0.5,0.5],[1,1,1,1]]])
-    f = np.array([[3,3,3,3],[1.5,1.5,1.5,1.5]])
+#     x = x1 + x2
+#     s = np.vstack((x1[None,:,:], x2[None,:,:]))
+#     B = np.array([[[1,1,1,1],[2,2,2,2]], [[0.5,0.5,0.5,0.5],[1,1,1,1]]])
+#     f = np.array([[3,3,3,3],[1.5,1.5,1.5,1.5]])
     
-    res_i, res_e = exact_f_greedy(B,f,s,x,1,verbose=False)
+#     res_i, res_e = exact_f_greedy(B,f,s,x,1,verbose=False)
     
-    assert np.allclose(res_i[0], np.array([0,1])), "indexing issue"
-    assert len(res_i[1])==1, "indexing issue"
-    assert res_i[1][0]==0 or res_i[1][0]==1, "indexing issue"
-    assert np.allclose(res_e, np.ones((2)), 0.0001)
+#     assert np.allclose(res_i[0], np.array([0,1])), "indexing issue"
+#     assert len(res_i[1])==1, "indexing issue"
+#     assert res_i[1][0]==0 or res_i[1][0]==1, "indexing issue"
+#     assert np.allclose(res_e, np.ones((2)), 0.0001)
     
 def test_grad_f_init():
     x1 = np.arange(1,2)[:,None]*np.ones(4)[None,:]
