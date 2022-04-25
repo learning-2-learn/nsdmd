@@ -9,6 +9,7 @@ class NSDMD():
     def __init__(self, opt_win=500, opt_stride=100, opt_rank=20, bandpass_trim=500, \
                  sim_thresh_freq=0.2, sim_thresh_phi_amp=0.95, drift_N=51,\
                  exact_var_thresh=0.01, feature_N=20, feature_seq_method='SBS', feature_f_method='exact',\
+                 feature_maxiter=5, feature_final_num=None,\
                  grad_alpha=0.1, grad_beta=0.1, grad_N=20, grad_lr=0.01, grad_maxiter=100,\
                  grad_fit_coupling=False, verbose=False):
         self.opt_win = opt_win
@@ -22,6 +23,8 @@ class NSDMD():
         self.feature_N = feature_N
         self.feature_seq_method = feature_seq_method
         self.feature_f_method = feature_f_method
+        self.feature_maxiter = feature_maxiter
+        self.feature_final_num = feature_final_num
         self.grad_alpha = grad_alpha
         self.grad_beta = grad_beta
         self.grad_N = grad_N
@@ -90,17 +93,29 @@ class NSDMD():
         
         idx_init = get_red_init(group_idx, len(self.windows_))
         idx_init = idx_init[~np.all(self.freqs_[tuple(np.transpose(idx_init, [1,0,2]))]==0, axis=1)]
-        soln, _, _ = get_soln(self.freqs_, self.phis_, idx_init, t_len, self.windows_, self.drift_N, t_step)
+        soln, freqs, _ = get_soln(self.freqs_, self.phis_, idx_init, t_len, self.windows_, self.drift_N, t_step)
         
-        idxs, self.errors_ = feature_selector(soln, x, self.feature_N,\
+        if self.grad_fit_coupling:
+            freq_mean = np.mean(freqs, axis=1)
+            p = circmean(np.angle(phis), axis=1, high=np.pi, low=-np.pi)
+            delay = np.array(np.round(p / (2 * np.pi * self.freq_mean_[:,None]) / t_step), dtype=int)
+        else:
+            delay = None
+        
+        idxs, self.errors_, self.num_modes_ = feature_selector(soln, x, self.feature_N, self.feature_final_num,\
                                               self.feature_seq_method, self.feature_f_method,\
-                                              self.exact_var_thresh, self.verbose)
+                                              self.exact_var_thresh, self.grad_alpha, self.grad_beta, self.grad_lr,\
+                                              self.feature_maxiter, self.grad_fit_coupling, delay, self.verbose)
         
         self.idx_red_ = [idx_init[idx] for idx in idxs]
         return self
     
     def fit_f(self, x, t_len, t_step, idx_num):
-        self.idx_hat_ = self.idx_red_[idx_num]
+        if np.any(self.num_modes_==idx_num):
+            self.idx_hat_ = self.idx_red_[np.argwhere(self.num_modes_==idx_num)[0,0]]
+        else:
+            print('Num modes requested has not been calculated, returning...')
+            return self
         
         soln, freqs, phis = get_soln(self.freqs_, self.phis_, self.idx_hat_,\
                                      t_len, self.windows_, self.drift_N, t_step)
@@ -388,7 +403,9 @@ def exact_f_from_Bf(B, f, N, var_thresh=0.01):
 
 #################### Reduction Method
 
-def feature_selector(soln, x, feature_N, seq_method='SBS', f_method='exact', exact_var_thresh=0.01, verbose=True):
+def feature_selector(soln, x, feature_N, final_num=None, seq_method='SBS', f_method='exact', \
+                     exact_var_thresh=0.01, grad_alpha=0.1, grad_beta=0.1, grad_lr=0.01, \
+                     maxiter=5, grad_fit_coupling=False, grad_delay=None, verbose=True):
     '''
     Wrapper to compute feature selection.
     Sequential methods include SBS, SFS, SBFS, and SFFS, described here:
@@ -398,7 +415,9 @@ def feature_selector(soln, x, feature_N, seq_method='SBS', f_method='exact', exa
     '''
     if f_method=='exact' or f_method=='grad':
         if seq_method=='SBS':
-            idxs, errors = _SBS(soln, x, f_method, feature_N, exact_var_thresh, verbose)
+            idxs, errors, num_modes, = _SBS(soln, x, f_method, feature_N, final_num, exact_var_thresh, \
+                                            grad_alpha, grad_beta, grad_lr,\
+                                            maxiter, grad_fit_coupling, grad_delay, verbose)
         elif seq_method=='SFS':
             print('TODO')
         elif seq_method=='SBFS':
@@ -414,13 +433,17 @@ def feature_selector(soln, x, feature_N, seq_method='SBS', f_method='exact', exa
         errors = []
         print('Incorrect global modulation method, must be exact or grad')
     
-    return idxs, errors
+    return idxs, errors, num_modes
     
-def _SBS(soln, x, f_method, N, exact_var_thresh=0.01, verbose=True):
-    idx_all = []
+def _SBS(soln, x, f_method, N, final_num=None, exact_var_thresh=0.01, \
+         grad_alpha=0.1, grad_beta=0.1, grad_lr=0.01, maxiter=5, grad_fit_coupling=False, grad_delay=None,\
+         verbose=True):
     
+    if verbose:
+        print('Number of modes: ' + str(soln.shape[0]) + '/' + str(soln.shape[0]))
     if f_method=='grad':
-        print('TODO')
+        f_hat = grad_f(x, soln, grad_alpha, grad_beta, N, grad_lr, maxiter, grad_fit_coupling, grad_delay)
+        f_hat = grad_f_amp(f_hat, soln, x)
     else:
         B,f = exact_Bf(x, soln)
         f_hat = exact_f_from_Bf(B, f, N, var_thresh=exact_var_thresh)
@@ -428,32 +451,41 @@ def _SBS(soln, x, f_method, N, exact_var_thresh=0.01, verbose=True):
     x_rec = get_reconstruction(soln, f_hat)
     total_error = [get_reconstruction_error(x, x_rec)]
     
-    for i in range(soln.shape[0]):
-        if verbose:
-            print(str(i) + '/' + str(soln.shape[0]))
-        if i==0:
-            idx = np.arange(soln.shape[0])
-        else:
-            idx = idx[np.arange(len(idx))!=np.argmax(error)]
-        idx_all.append(idx)
+    if final_num is None or final_num > soln.shape[0] or final_num <= 0:
+        final_num = 1
+    elif final_num==soln.shape[0]:
+        final_num += 1
         
-        if(len(idx)>1):
-            error = np.empty(len(idx))
-            for j, r in enumerate(idx):
-                idx_sub = idx[idx!=r]
-                if f_method=='grad':
-                    print('TODO')
-                else:
-                    f_sub = f[idx_sub]
-                    B_sub = np.array([b[idx_sub] for b in B[idx_sub]])
-                    f_hat = exact_f_from_Bf(B_sub, f_sub, N, var_thresh=exact_var_thresh)
-                
-                x_rec = get_reconstruction(soln[idx_sub], f_hat)
-                error[j] = get_reconstruction_error(x, x_rec)
-                
-            total_error.append(np.max(error))
+    idx = np.arange(soln.shape[0])
+    idx_all = [idx]
+    num_modes = [soln.shape[0]]
     
-    return(idx_all, total_error)
+    for i in range(soln.shape[0],final_num,-1):
+        if verbose:
+            print('Number of modes: ' + str(i-1) + '/' + str(soln.shape[0]))
+        
+        error = np.empty(len(idx))
+        for j, r in enumerate(idx):
+            idx_sub = idx[idx!=r]
+            if f_method=='grad':
+                f_hat = grad_f(x, soln[idx_sub], grad_alpha, grad_beta, N, grad_lr,\
+                               maxiter, grad_fit_coupling, grad_delay)
+                f_hat = grad_f_amp(f_hat, soln[idx_sub], x)
+            else:
+                f_sub = f[idx_sub]
+                B_sub = np.array([b[idx_sub] for b in B[idx_sub]])
+                f_hat = exact_f_from_Bf(B_sub, f_sub, N, var_thresh=exact_var_thresh)
+
+            x_rec = get_reconstruction(soln[idx_sub], f_hat)
+            error[j] = get_reconstruction_error(x, x_rec)
+
+        total_error.append(np.max(error))
+        idx = idx[np.arange(len(idx))!=np.argmax(error)]
+        idx_all.append(idx)
+        num_modes.append(i-1)
+    
+    num_modes = np.array(num_modes)
+    return(idx_all, total_error, num_modes)
 
 ###################### Gradient Descent
 
