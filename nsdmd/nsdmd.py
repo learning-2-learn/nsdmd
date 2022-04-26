@@ -742,13 +742,13 @@ def grad_f_grad_loss(f, x, soln, alpha, beta, N):
     dLdf : gradient of loss function
     '''
     if len(f.shape)==3:
-        Y = np.matmul(np.transpose(soln, [2,1,0]), np.transpose(f, [2,0,1]))[:,:,0] #time, chan
+        Y = np.einsum('ijk,ijk->jk', soln, f)
         f_mean = np.mean(f, axis=1)
     else:
-        Y = np.matmul(np.transpose(soln, [2,1,0]), np.transpose(f)[:,:,None])[:,:,0] #time, chan
+        Y = np.einsum('ijk,ik->jk', soln, f)
         f_mean = f
-    Y2 = Y - x.T
-    l2_term = np.matmul(np.transpose(soln, [2,0,1]), Y2[:,:,None])[:,:,0].T
+    Y2 = Y - x
+    l2_term = np.einsum('ijk,jk->ik', soln, Y2)
     
     alpha_term = np.ones((f_mean.shape)) * alpha
     alpha_term[f_mean<0] = -alpha_term[f_mean<0]
