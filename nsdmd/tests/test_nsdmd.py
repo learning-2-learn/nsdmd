@@ -74,12 +74,12 @@ def test_get_red_init():
     
 def test_get_phi_init():
     f = np.hstack((4*np.ones((500)), 2*np.ones((500))))
-    t_step = 0.001
+    sr = 1000
     phi_a = np.array([1,2,3])
     phi = np.vstack((phi_a, phi_a, -phi_a))
     offsets = np.array((0,250,750))
     
-    res = get_phi_init(f, phi, offsets, t_step)
+    res = get_phi_init(f, phi, offsets, sr)
     ans = np.vstack((phi_a,phi_a,phi_a))
     assert np.allclose(res, ans)
 
@@ -89,10 +89,10 @@ def test_get_soln():
     idxs = np.array([[np.arange(4), np.zeros(4)], [np.arange(4), np.ones(4)]], dtype=int)
     t_len = 1000
     N = 1
-    t_step = 0.001
+    sr = 1000
     windows = np.array([np.arange(250), np.arange(250,500), np.arange(500,750), np.arange(750,1000)])
 
-    res = get_soln(freqs, phi, idxs, t_len, windows, N, t_step)
+    res = get_soln(freqs, phi, idxs, t_len, windows, N, sr)
     ans = np.array([[[ 1.,  1., -1.], [ 2.,  2., -2.], [ 3.,  3., -3.]], \
                     [[ 1.,  1., -1.], [ 2.,  2., -2.], [ 3.,  3., -3.]]])
 

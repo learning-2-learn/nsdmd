@@ -35,7 +35,7 @@ class NSDMD():
         self.grad_fit_coupling = grad_fit_coupling
         self.verbose = verbose
         
-    def fit_opt(self, x, t, t_step, initial_freq_guess=None):
+    def fit_opt(self, x, t, sr, initial_freq_guess=None):
         if self.bandpass is None:
             f, p, w = opt_dmd_win(x, t, self.opt_win, self.opt_stride, self.opt_rank, initial_freq_guess)
             self.freqs_ = f
@@ -53,8 +53,8 @@ class NSDMD():
             for i, bp in enumerate(self.bandpass):
                 if self.verbose:
                     print(bp)
-                temp = utils.butter_pass_filter(x.copy(), bp[0], int(1/t_step), 'high')
-                temp2 = utils.butter_pass_filter(temp, bp[1], int(1/t_step), 'low')
+                temp = utils.butter_pass_filter(x.copy(), bp[0], int(sr), 'high')
+                temp2 = utils.butter_pass_filter(temp, bp[1], int(sr), 'low')
                 x_filt = temp2 / np.std(temp2, axis=-1)[:,None]
                 x_filt = x_filt[:,self.bandpass_trim:-self.bandpass_trim]
                 
@@ -90,17 +90,17 @@ class NSDMD():
         self.offsets_ = offsets
         return self
 
-    def fit_reduction(self, x, t_len, t_step):
+    def fit_reduction(self, x, t_len, sr):
         group_idx = group_by_similarity(self.freqs_, self.phis_, self.sim_thresh_freq, self.sim_thresh_phi_amp)
         
         idx_init = get_red_init(group_idx, len(self.windows_))
         idx_init = idx_init[~np.all(self.freqs_[tuple(np.transpose(idx_init, [1,0,2]))]==0, axis=1)]
-        soln, freqs, phis = get_soln(self.freqs_, self.phis_, idx_init, t_len, self.windows_, self.drift_N, t_step)
+        soln, freqs, phis = get_soln(self.freqs_, self.phis_, idx_init, t_len, self.windows_, self.drift_N, sr)
         
         if self.grad_fit_coupling:
             freq_mean = np.mean(freqs, axis=1)
             p = circmean(np.angle(phis), axis=1, high=np.pi, low=-np.pi)
-            delay = np.array(np.round(p / (2 * np.pi * freq_mean[:,None]) / t_step), dtype=int)
+            delay = np.array(np.round(p*sr / (2 * np.pi * freq_mean[:,None])), dtype=int)
         else:
             delay = None
         
@@ -113,7 +113,7 @@ class NSDMD():
         self.idx_red_ = [idx_init[idx] for idx in idxs]
         return self
     
-    def fit_f(self, x, t_len, t_step, idx_num):
+    def fit_f(self, x, t_len, sr, idx_num):
         if np.any(self.num_modes_==idx_num):
             self.idx_hat_ = self.idx_red_[np.argwhere(self.num_modes_==idx_num)[-1,0]]
         else:
@@ -121,14 +121,14 @@ class NSDMD():
             return self
         
         soln, freqs, phis = get_soln(self.freqs_, self.phis_, self.idx_hat_,\
-                                     t_len, self.windows_, self.drift_N, t_step)
+                                     t_len, self.windows_, self.drift_N, sr)
         
         self.freq_mean_ = np.mean(freqs, axis=1)
         a = np.mean(np.abs(phis), axis=1)
         p = circmean(np.angle(phis), axis=1, high=np.pi, low=-np.pi)
         self.phi_mean_ = a*np.exp(1j*p)
         
-        self.delay_hat_ = np.array(np.round(p / (2 * np.pi * self.freq_mean_[:,None]) / t_step), dtype=int)
+        self.delay_hat_ = np.array(np.round(p * sr / (2 * np.pi * self.freq_mean_[:,None])), dtype=int)
         
         f_hat = grad_f(x, soln, self.grad_alpha, self.grad_beta, \
                        self.grad_N, self.grad_lr, self.grad_maxiter, \
@@ -136,13 +136,13 @@ class NSDMD():
         self.f_hat_ = grad_f_amp(f_hat, soln, x)
         return self
     
-    def transform(self, x, t_len, t_step):
-        soln, _, _ = get_soln(self.freqs_, self.phis_, self.idx_hat_, t_len, self.windows_, self.drift_N, t_step)
+    def transform(self, x, t_len, sr):
+        soln, _, _ = get_soln(self.freqs_, self.phis_, self.idx_hat_, t_len, self.windows_, self.drift_N, sr)
         x_rec = get_reconstruction(soln, self.f_hat_)
         return x_rec
     
-    def get_freq_and_phi(self, t_len, t_step):
-        _, freqs, phis = get_soln(self.freqs_, self.phis_, self.idx_hat_, t_len, self.windows_, self.drift_N, t_step)
+    def get_freq_and_phi(self, t_len, sr):
+        _, freqs, phis = get_soln(self.freqs_, self.phis_, self.idx_hat_, t_len, self.windows_, self.drift_N, sr)
         return(freqs, phis)
 
 
@@ -196,7 +196,7 @@ def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
 
 ##################### Processing steps
 
-def get_phi_init(freqs, phi, offsets, t_step):
+def get_phi_init(freqs, phi, offsets, sr):
     '''
     Gets the spatial mode, phi, at t=0
     
@@ -205,19 +205,19 @@ def get_phi_init(freqs, phi, offsets, t_step):
     freqs : frequencies at every timepoint with shape (time)
     phi : phi at every measured window with shape (number of windows, number of channels)
     offsets : the temporal offsets (in number of timesteps) of each window with shape (number of windows)
-    t_step : the inverse of the sampling rate
+    sr : the sampling rate
     
     Returns
     -------
     phi_init : phi at t=0 for each window with shape (number of windows, number of channels)
     '''
     freqs = np.insert(freqs[:-1],0,0)
-    phase_in = np.cumsum(freqs*t_step)
+    phase_in = np.cumsum(freqs/sr)
     t_diff = np.exp(-2*np.pi*1j*phase_in[offsets])
     phi_init = (phi*t_diff[:,None])
     return(phi_init)
 
-def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
+def get_soln(freqs, phis, idxs, t_len, windows, N, sr):
     '''
     Gets the solutions and calculates the frequencies, and phis over time
     
@@ -230,7 +230,7 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
     t_len : length of entire region of interest
     windows : list of windows
     N : amount of temporal averaging of the frequecies
-    t_step : inverse of sampling rate
+    sr : sampling rate
     
     Returns
     -------
@@ -269,7 +269,7 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
     
     phis_init = np.empty((len(idxs), len(windows), phis.shape[-1]), dtype=complex)
     for i in range(len(idxs)):
-        phis_init[i] = get_phi_init(freqs_m[i], phis[tuple(idxs[i])], windows[idxs[i][0],0], t_step)
+        phis_init[i] = get_phi_init(freqs_m[i], phis[tuple(idxs[i])], windows[idxs[i][0],0], sr)
     
     phis_all = np.empty((len(idxs), t_len, phis.shape[-1]), dtype=complex)
         
@@ -286,7 +286,7 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, t_step):
             phis_all[:,temp_ii] = (temp_pa * np.exp(1j*temp_pp))[:,None,:]
             
     freqs_in = np.insert(freqs_m[:,:-1],0,np.zeros(len(idxs)), axis=1)
-    phase_in = np.cumsum(freqs_in * t_step, axis=1)
+    phase_in = np.cumsum(freqs_in / sr, axis=1)
     temp = np.exp(2*np.pi*1j*phase_in)
     soln = np.transpose((phis_all*temp[:,:,None]).real,[0,2,1])
     

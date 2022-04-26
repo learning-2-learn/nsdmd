@@ -120,7 +120,7 @@ def _butter_pass(cutoff, fs, btype, order=5):
 
 ###################### For simulations
 
-def make_network(freq, t_len, phi_amp, phi_phase, t_step=0.001, time_mod=0, coupling=0):
+def make_network(freq, t_len, phi_amp, phi_phase, sr=1000, time_mod=0, coupling=0):
     '''
     Generates a network that oscillates at some frequency with the desired parameters
     
@@ -133,7 +133,7 @@ def make_network(freq, t_len, phi_amp, phi_phase, t_step=0.001, time_mod=0, coup
     t_len : time length of network
     phi_amp : amplitude of channels
     phi_phase : phase of channels in number of time steps (must be length of phi_amp)
-    t_step : time step
+    sr : sampling rate
     time_mod : modulation of time series (multiplies by time series).
         Can be int/float (if freq) or manual series (must be of length t_len)
     coupling : modulation of individual freq. E.g. Freq coupling.
@@ -155,15 +155,15 @@ def make_network(freq, t_len, phi_amp, phi_phase, t_step=0.001, time_mod=0, coup
         freq = np.insert(freq,0,0)
     
     if type(time_mod)==float or type(time_mod)==int:
-        time_mod = 0.5*(1 + np.cos(time_mod * 2*np.pi * np.arange(0,t_len*t_step,t_step)))
+        time_mod = 0.5*(1 + np.cos(time_mod * 2*np.pi * np.arange(0,int(t_len/sr),1/sr)))
         
     if type(coupling)==float or type(coupling)==int:
-        coupling = 0.5*(1 + np.cos(coupling * 2*np.pi * np.arange(-t_len,2*t_len)*t_step))
+        coupling = 0.5*(1 + np.cos(coupling * 2*np.pi * np.arange(-t_len,2*t_len)*1/sr))
         
     assert len(time_mod)==t_len, 'Length of time modulation not correct'
     assert len(coupling)==3*t_len, 'Length of coupling not correct'
     
-    phase_in = np.cumsum(freq*t_step) #Adds integral into cosine
+    phase_in = np.cumsum(freq/sr) #Adds integral into cosine
     t = np.cos(2*np.pi*phase_in) * coupling
     phi_t = t[np.arange(t_len, 2*t_len) + phi_phase[:,None]]
     

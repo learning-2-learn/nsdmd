@@ -36,38 +36,38 @@ def test_make_network():
     #All tests are either with default settings or modified default settings
     f = 4
     t_len = 1000
-    t_step = 0.001
+    sr = 1000
     phi_a = np.array([1,2,3])
     phi_p = np.array([0,30,-30])
     
-    res_n, res_f, res_c = make_network(f, t_len, phi_a, phi_p, t_step)
+    res_n, res_f, res_c = make_network(f, t_len, phi_a, phi_p, sr)
     assert np.allclose(res_n[0,np.array([0,250,500,750])], np.ones((4))/(14**0.5)), "regular idx 0"
     assert np.allclose(res_n[1,np.array([-30,220,470,720])], 2*np.ones((4))/(14**0.5)), "regular idx 1"
     assert np.allclose(res_n[2,np.array([30,280,530,780])], 3*np.ones((4))/(14**0.5)), "regular idx 2"
     
-    t_step = 0.002
+    sr = 500
     
-    res_n, res_f, res_c = make_network(f, t_len, phi_a, phi_p, t_step)
+    res_n, res_f, res_c = make_network(f, t_len, phi_a, phi_p, sr)
     assert np.allclose(res_n[0,np.array([0,125,250,375])], np.ones((4))/(14**0.5)), "different time step"
     
-    t_step = 0.001
+    sr = 1000
     f = np.hstack((4*np.ones(1500), 2*np.ones(1500)))
     
-    res_n, res_f, res_c = make_network(f, t_len, phi_a, phi_p, t_step)
+    res_n, res_f, res_c = make_network(f, t_len, phi_a, phi_p, sr)
     assert np.allclose(res_n[0,np.array([0,250,500])], np.ones((3))/(14**0.5)), "freq array"
     assert np.allclose(res_n[0,np.array([750])], -np.ones((1))/(14**0.5)), "freq array"
     
     f = 4
     time_mod = np.arange(1000)
     
-    res_n, res_f, res_c = make_network(f, t_len, phi_a, phi_p, t_step, time_mod=time_mod)
+    res_n, res_f, res_c = make_network(f, t_len, phi_a, phi_p, sr, time_mod=time_mod)
     assert np.allclose(res_f[:,np.array([0,250,500,750])], \
                        np.ones(3)[:,None]*np.array([0,250,500,750])[None,:]), "time_mod"
     
     time_mod = 0
     coupling = np.arange(3000)
     
-    res_n, res_f, res_c = make_network(f, t_len, phi_a, phi_p, t_step, coupling=coupling)
+    res_n, res_f, res_c = make_network(f, t_len, phi_a, phi_p, sr, coupling=coupling)
     assert np.allclose(res_f[:,np.array([0,250,500,750])], \
                        np.array([[1000,1250,1500,1750],[1030,1280,1530,1780],[970,1220,1470,1720]])), "coupling, global f"
     assert np.allclose(res_c[np.array([0,250,500,750])], np.array([1000,1250,1500,1750])), "coupling, c"
