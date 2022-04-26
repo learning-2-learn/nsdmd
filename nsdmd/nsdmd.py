@@ -6,7 +6,7 @@ from scipy.stats import circmean
 ################## Classes
 
 class NSDMD():
-    def __init__(self, opt_win=500, opt_stride=100, opt_rank=20, bandpass_trim=500, \
+    def __init__(self, opt_win=500, opt_stride=100, opt_rank=20, bandpass=None, bandpass_trim=500, \
                  sim_thresh_freq=0.2, sim_thresh_phi_amp=0.95, drift_N=51,\
                  exact_var_thresh=0.01, feature_N=20, feature_seq_method='SBS', feature_f_method='exact',\
                  feature_maxiter=5, feature_final_num=None, feature_maxiter_float=1,\
@@ -15,6 +15,7 @@ class NSDMD():
         self.opt_win = opt_win
         self.opt_stride = opt_stride
         self.opt_rank = opt_rank
+        self.bandpass = bandpass
         self.bandpass_trim = bandpass_trim
         self.sim_thresh_freq = sim_thresh_freq
         self.sim_thresh_phi_amp = sim_thresh_phi_amp
@@ -34,22 +35,22 @@ class NSDMD():
         self.grad_fit_coupling = grad_fit_coupling
         self.verbose = verbose
         
-    def fit_opt(self, x, t, t_step, initial_freq_guess=None, bandpass=None):
-        if bandpass is None:
+    def fit_opt(self, x, t, t_step, initial_freq_guess=None):
+        if self.bandpass is None:
             f, p, w = opt_dmd_win(x, t, self.opt_win, self.opt_stride, self.opt_rank, initial_freq_guess)
             self.freqs_ = f
             self.phis_ = p
             self.windows_ = w
             self.offsets_ = t[self.windows_[:,0]][:,None]*np.ones((self.freqs_.shape[1]), dtype=int)[None,:]
         else:
-            bandpass = np.array(bandpass)
-            assert len(bandpass.shape)==2, "Must be 2 dimensional"
-            assert bandpass.shape[1]==2, "Second dimension needs to be of length 2"
+            self.bandpass = np.array(self.bandpass)
+            assert len(self.bandpass.shape)==2, "Must be 2 dimensional"
+            assert self.bandpass.shape[1]==2, "Second dimension needs to be of length 2"
             
             t = t.copy()[self.bandpass_trim:-self.bandpass_trim]
             freqs = []
             phis = []
-            for i, bp in enumerate(bandpass):
+            for i, bp in enumerate(self.bandpass):
                 if self.verbose:
                     print(bp)
                 temp = utils.butter_pass_filter(x.copy(), bp[0], int(1/t_step), 'high')
