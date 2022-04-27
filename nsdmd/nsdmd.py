@@ -7,8 +7,8 @@ from scipy.stats import circmean
 
 class NSDMD():
     def __init__(self, opt_win=500, opt_stride=100, opt_rank=20, bandpass=None, bandpass_trim=500, \
-                 sim_thresh_freq=0.2, sim_thresh_phi_amp=0.95, drift_N=51,\
-                 exact_var_thresh=0.01, feature_N=20, feature_seq_method='SBS', feature_f_method='exact',\
+                 sim_thresh_freq=0.2, sim_thresh_phi_amp=0.95, drift_N=51, exact_var_thresh=0.01, \
+                 feature_init=None, feature_N=20, feature_seq_method='SBS', feature_f_method='exact',\
                  feature_maxiter=5, feature_final_num=None, feature_maxiter_float=1,\
                  grad_alpha=0.1, grad_beta=0.1, grad_N=20, grad_lr=0.01, grad_maxiter=100,\
                  grad_fit_coupling=False, verbose=False):
@@ -21,6 +21,7 @@ class NSDMD():
         self.sim_thresh_phi_amp = sim_thresh_phi_amp
         self.drift_N = drift_N
         self.exact_var_thresh = exact_var_thresh
+        self.feature_init = feature_init
         self.feature_N = feature_N
         self.feature_seq_method = feature_seq_method
         self.feature_f_method = feature_f_method
@@ -96,6 +97,13 @@ class NSDMD():
         idx_init = get_red_init(group_idx, len(self.windows_))
         idx_init = idx_init[~np.all(self.freqs_[tuple(np.transpose(idx_init, [1,0,2]))]==0, axis=1)]
         soln, freqs, phis = get_soln(self.freqs_, self.phis_, idx_init, t_len, self.windows_, self.drift_N, sr)
+        
+        if self.feature_init is not None:
+            idx_feat_init = feature_init_remove(soln, np.mean(freqs, axis=1), x, sr, thresh=self.feature_init)
+            idx_init = idx_init[idx_feat_init]
+            soln = soln[idx_feat_init]
+            freqs = freqs[idx_feat_init]
+            phis = phis[idx_feat_init]
         
         if self.grad_fit_coupling:
             freq_mean = np.mean(freqs, axis=1)
@@ -352,6 +360,43 @@ def get_red_init(group_idx, num_windows):
             idx_red.append([temp, np.ones(len(temp))*j])
     idx_red = np.array(idx_red, dtype=int)
     return(idx_red)
+
+def feature_init_remove(soln, freqs, x, sr, thresh=0.2):
+    '''
+    Initially keeps some number of solutions based on simple reconstruction error
+    Assumes no global modulation
+    
+    Parameters
+    ----------
+    soln : solutions with shape (num modes, num channels, time)
+    freqs : average frequency for each mode (num modes)
+    x : original data with shape (num channels, time)
+    sr : sampling rate
+    threh : either integer with value >= 1 and < num modes (this keeps that many modes with best reconstruction)
+        or float with value between 0 and 1 (this keeps all modes above this cosine distance)
+    
+    Returns
+    -------
+    idxs : list of indicies that surpass threshold
+    '''
+    f = np.ones((1, soln.shape[-1]))
+    errors = np.empty((len(soln)))
+    for i in range(len(soln)):
+        soln_sub = soln[[i]]
+        x_sub = utils.butter_pass_filter(x, np.max([freqs[i]-1, 1]), sr, 'high')
+        x_sub = utils.butter_pass_filter(x_sub, freqs[i]+1, sr, 'low')
+        
+        f_sub = grad_f_amp(f, soln_sub, x_sub)
+        x_rec = get_reconstruction(soln_sub, f_sub)
+        errors[i] = get_reconstruction_error(x_rec, x_sub)
+    
+    if (thresh > 0 and thresh < 1):
+        idxs = np.argwhere(errors > thresh)[:,0]
+    elif (thresh >= 1 and thresh < len(soln)):
+        idxs = np.argsort(errors)[::-1][:int(thresh)]
+    else:
+        print('Incorrect threshold, should be either value between 0 and 1 or integer above 1')
+    return(idxs)
 
 ###################### Exact Method
 

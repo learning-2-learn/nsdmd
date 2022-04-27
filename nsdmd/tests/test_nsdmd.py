@@ -2,6 +2,7 @@ import numpy as np
 from nsdmd.nsdmd import opt_dmd_win
 from nsdmd.nsdmd import group_by_similarity
 from nsdmd.nsdmd import get_red_init
+from nsdmd.nsdmd import feature_init_remove
 from nsdmd.nsdmd import get_phi_init
 from nsdmd.nsdmd import get_soln
 from nsdmd.nsdmd import exact_Bf
@@ -71,6 +72,9 @@ def test_get_red_init():
     ans = np.array([[np.array([0, 1, 2, 2]), np.zeros(4)], [np.array([3, 3, 3, 3]), np.zeros(4)], \
                     [np.array([1, 1, 1, 1]),np.ones(4)]])
     assert np.allclose(res, ans)
+    
+def test_feature_init_remove():
+    assert False, 'TODO'
     
 def test_get_phi_init():
     f = np.hstack((4*np.ones((500)), 2*np.ones((500))))
