@@ -53,7 +53,7 @@ class NSDMD():
             phis = []
             for i, bp in enumerate(self.bandpass):
                 if self.verbose:
-                    print(bp)
+                    print('Starting bandpass freq: ' + str(bp[0]) + ' - ' + str(bp[1]) + ' Hz')
                 temp = utils.butter_pass_filter(x.copy(), bp[0], int(sr), 'high')
                 temp2 = utils.butter_pass_filter(temp, bp[1], int(sr), 'low')
                 x_filt = temp2 / np.std(temp2, axis=-1)[:,None]
@@ -92,11 +92,16 @@ class NSDMD():
         return self
 
     def fit_reduction(self, x, t_len, sr):
+        if self.verbose:
+            print('Gathering modes...')
         group_idx = group_by_similarity(self.freqs_, self.phis_, self.sim_thresh_freq, self.sim_thresh_phi_amp)
         
         idx_init = get_red_init(group_idx, len(self.windows_))
         idx_init = idx_init[~np.all(self.freqs_[tuple(np.transpose(idx_init, [1,0,2]))]==0, axis=1)]
         soln, freqs, phis = get_soln(self.freqs_, self.phis_, idx_init, t_len, self.windows_, self.drift_N, sr)
+        
+        if self.verbose:
+            print('Found ' + str(len(idx_init)) + ' modes')
         
         if self.feature_init is not None:
             idx_feat_init = feature_init_remove(soln, np.mean(freqs, axis=1), x, sr, thresh=self.feature_init)
@@ -104,8 +109,13 @@ class NSDMD():
             soln = soln[idx_feat_init]
             freqs = freqs[idx_feat_init]
             phis = phis[idx_feat_init]
+            
+            if self.verbose:
+                print('Initially reducing to ' + str(len(idx_init)) + ' modes\n')
         
         if self.grad_fit_coupling:
+            if self.verbose:
+                print('Calculating individual delays...\n')
             freq_mean = np.mean(freqs, axis=1)
             p = circmean(np.angle(phis), axis=1, high=np.pi, low=-np.pi)
             delay = np.array(np.round(p*sr / (2 * np.pi * freq_mean[:,None])), dtype=int)
@@ -550,8 +560,13 @@ def _SBS(soln, x, f_method, N, final_num=None, floating=False, maxiter_float=1, 
     total_error : list of errors for each step
     num_modes : number of modes for each step
     '''
+    if final_num is None or final_num > soln.shape[0] or final_num <= 0:
+        final_num = 0
+    elif final_num==soln.shape[0]:
+        final_num = soln.shape[0] - 1
+    
     if verbose:
-        print('Number of modes: ' + str(soln.shape[0]) + '/' + str(soln.shape[0]))
+        print('Number of modes: ' + str(soln.shape[0]) + '/' + str(soln.shape[0]) + ', stopping at ' + str(final_num))
     if f_method=='grad':
         f_hat = grad_f(x, soln, grad_alpha, grad_beta, N, grad_lr, maxiter, grad_fit_coupling, grad_delay)
         f_hat = grad_f_amp(f_hat, soln, x)
@@ -561,11 +576,6 @@ def _SBS(soln, x, f_method, N, final_num=None, floating=False, maxiter_float=1, 
     
     x_rec = get_reconstruction(soln, f_hat)
     total_error = [get_reconstruction_error(x, x_rec)]
-    
-    if final_num is None or final_num > soln.shape[0] or final_num <= 0:
-        final_num = 0
-    elif final_num==soln.shape[0]:
-        final_num = soln.shape[0] - 1
         
     idx = np.arange(soln.shape[0])
     idx_excluded = []
@@ -577,7 +587,7 @@ def _SBS(soln, x, f_method, N, final_num=None, floating=False, maxiter_float=1, 
     
     while(final_num != i):
         if verbose:
-            print('Number of modes: ' + str(i) + '/' + str(soln.shape[0]))
+            print('Number of modes: ' + str(i) + '/' + str(soln.shape[0]) + ', stopping at ' + str(final_num))
         if i_last == i+1:
             num_float = 0
             i_last = i
@@ -684,7 +694,7 @@ def _SFS(soln, x, f_method, N, final_num=None, floating=False, maxiter_float=1, 
     
     while(termination_num != i):
         if verbose:
-            print('Number of modes: ' + str(i) + '/' + str(soln.shape[0]))
+            print('Number of modes: ' + str(i) + '/' + str(soln.shape[0]) + ', stopping at ' + str(final_num))
         if i_last == i-1:
             num_float = 0
             i_last = i
