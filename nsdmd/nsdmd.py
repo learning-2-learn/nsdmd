@@ -44,43 +44,12 @@ class NSDMD():
             self.windows_ = w
             self.offsets_ = t[self.windows_[:,0]][:,None]*np.ones((self.freqs_.shape[1]), dtype=int)[None,:]
         else:
-            self.bandpass = np.array(self.bandpass)
-            assert len(self.bandpass.shape)==2, "Must be 2 dimensional"
-            assert self.bandpass.shape[1]==2, "Second dimension needs to be of length 2"
-            
-            t = t.copy()[self.bandpass_trim:-self.bandpass_trim]
-            freqs = []
-            phis = []
-            for i, bp in enumerate(self.bandpass):
-                if self.verbose:
-                    print('Starting bandpass freq: ' + str(bp[0]) + ' - ' + str(bp[1]) + ' Hz')
-                temp = utils.butter_pass_filter(x.copy(), bp[0], int(sr), 'high')
-                temp2 = utils.butter_pass_filter(temp, bp[1], int(sr), 'low')
-                x_filt = temp2 / np.std(temp2, axis=-1)[:,None]
-                x_filt = x_filt[:,self.bandpass_trim:-self.bandpass_trim]
-                
-                if initial_freq_guess is None:
-                    guess = np.random.rand(int(np.ceil(self.opt_rank/2))) * (bp[1]-bp[0]) + bp[0]
-                    guess = np.hstack([[g,-g] for g in guess])
-                    guess = guess[:self.opt_rank]
-                else:
-                    print('TODO')
-                    guess = np.random.rand(int(np.ceil(self.opt_rank/2))) * (bp[1]-bp[0]) + bp[0]
-                    guess = np.hstack([[g,-g] for g in guess])
-                    guess = guess[:self.opt_rank]
-                
-                f, p, w = opt_dmd_win(x_filt, t, self.opt_win, self.opt_stride, self.opt_rank, guess)
-                idx = (np.abs(f)<bp[0]) | (np.abs(f)>bp[1])
-                f[idx] = 0
-                p[idx] = 0
-                f = f[:,~np.all(f == 0, axis = 0)]
-                p = p[:,~np.all(np.all(p==0, axis=0), axis=1)]
-                freqs.append(f)
-                phis.append(p)
-            self.freqs_ = np.hstack(freqs)
-            self.phis_ = np.hstack(phis)
+            f, p, w = opt_dmd_with_bandpass(x, t, sr, self.opt_win, self.opt_stride, self.opt_rank,\
+                                            self.bandpass, self.bandpass_trim, initial_freq_guess, self.verbose)
+            self.freqs_ = f
+            self.phis_ = p
             self.windows_ = w
-            self.offsets_ = t[self.windows_[:,0]][:,None]*np.ones((self.freqs_.shape[1]), dtype=int)[None,:]
+            self.offsets_ = t[self.bandpass_trim:-self.bandpass_trim][self.windows_[:,0]][:,None]*np.ones((self.freqs_.shape[1]), dtype=int)[None,:]
                     
         return self
     
@@ -211,6 +180,128 @@ def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
         phis[i] = dmd.modes.T
 
     return(freqs, phis, windows)
+
+def opt_dmd_with_bandpass(x, t, sr, w_len, stride, rank, bp_ranges, trim, initial_guess=None, verbose=False):
+    '''
+    Runs opt_dmd_win for bandpassed regions
+    
+    Parameters
+    ----------
+    x : data matrix
+    t : timepoints of x
+    sr : sampling rate
+    w_len : window length
+    stride : stride for opt_dmd_win
+    rank : rank of opt_dmd
+    bp_ranges : list of bandpass ranges (e.g. [[1,4],[4,7],...])
+    trim : amount of data matrix to exclude after bandpassing
+    initial_guess : list of initial guesses for frequencies, corresponding to bp_ranges
+    verbose : flag to say whether to show comments
+    
+    Returns
+    -------
+    freqs_ : non-trivial freqs
+    phis_ : non-trivial phis
+    w : corresponding windows
+    '''
+    bp_ranges = np.array(bp_ranges)
+    assert len(bp_ranges.shape)==2, "Must be 2 dimensional"
+    assert bp_ranges.shape[1]==2, "Second dimension needs to be of length 2"
+    if initial_guess is not None:
+        initial_guess = np.array(initial_guess)
+        assert len(bp_ranges)==len(initial_guess), "Guess must be of same length as bp_ranges"
+        assert len(initial_guess.shape[1])==rank, "Guess must have the same number of modes as rank"
+
+    t = t.copy()[trim:-trim]
+    freqs = []
+    phis = []
+    for i, bp in enumerate(bp_ranges):
+        if verbose:
+            print('Starting bandpass freq: ' + str(bp[0]) + ' - ' + str(bp[1]) + ' Hz')
+            
+        x_filt = _bandpass_x(x, sr, bp[0], bp[1], trim=trim)
+        guess = _bandpass_guess(bp[0], bp[1], rank, initial_guess)
+
+        f, p, w = opt_dmd_win(x_filt, t, w_len, stride, rank, guess)
+        f, p = _bandpass_exclude(f, p, bp[0], bp[1])
+
+        freqs.append(f)
+        phis.append(p)
+    freqs_ = np.hstack(freqs)
+    phis_ = np.hstack(phis)
+    return(freqs_, phis_, w)
+
+def _bandpass_x(x, sr, bp_low, bp_high, trim=None):
+    '''
+    Bandpasses data to specified freq range
+    
+    Parameters
+    ----------
+    x : data matrix
+    sr : sampling rate
+    bp_low : lower bandpass range
+    bp_high : upper bandpass range
+    trim : how much of data to trim after bandpassing
+    
+    Returns
+    -------
+    x_filt : filtered data
+    '''
+    temp = utils.butter_pass_filter(x.copy(), bp_low, int(sr), 'high')
+    temp2 = utils.butter_pass_filter(temp, bp_high, int(sr), 'low')
+    x_filt = temp2 / np.std(temp2, axis=-1)[:,None]
+    
+    if trim is not None:
+        x_filt = x_filt[:,trim:-trim]
+    return(x_filt)
+
+def _bandpass_guess(bp_low, bp_high, rank, initial_guess=None):
+    '''
+    Finds the frequency guess of bandpassed data
+    
+    Parameters
+    ----------
+    bp_low : lower bound on frequency range
+    bp_high : upper bound on frequency range
+    rank : rank of guess
+    initial_guess : initial guess of frequencies
+    
+    Returns
+    -------
+    guess : guess of desired rank and bandpass range
+    '''
+    if initial_guess is None:
+        guess = np.random.rand(int(np.ceil(rank/2))) * (bp_high-bp_low) + bp_low
+        guess = np.hstack([[g,-g] for g in guess])
+        guess = guess[:rank]
+    else:
+        assert len(initial_guess)==rank, "Length of initial guess must be the same as rank"
+        guess = initial_guess
+    return(guess)
+
+def _bandpass_exclude(freq, phi, bp_low, bp_high):
+    '''
+    Excluded modes outside of bandpass range
+    
+    Parameters
+    ----------
+    freq : frequencies
+    phi : spatial modes
+    bp_low : lower bound on frequencies
+    bp_high : upper bound on frequencies
+    
+    Returns
+    -------
+    freq : non-trivial frequencies outside of frequency range
+    phi : non-trivial phis outside of frequency range
+    '''
+    idx = (np.abs(freq)<bp_low) | (np.abs(freq)>bp_high)
+    freq[idx] = 0
+    phi[idx] = 0
+    freq = freq[:,~np.all(freq == 0, axis = 0)]
+    phi = phi[:,~np.all(np.all(phi==0, axis=0), axis=1)]
+    
+    return(freq, phi)
 
 ##################### Processing steps
 
@@ -393,8 +484,7 @@ def feature_init_remove(soln, freqs, x, sr, thresh=0.2):
     errors = np.empty((len(soln)))
     for i in range(len(soln)):
         soln_sub = soln[[i]]
-        x_sub = utils.butter_pass_filter(x, np.max([freqs[i]-1, 1]), sr, 'high')
-        x_sub = utils.butter_pass_filter(x_sub, freqs[i]+1, sr, 'low')
+        x_sub = _bandpass_x(x, sr, np.max([freqs[i]-1, 1.1]), freqs[i]+1)
         
         f_sub = grad_f_amp(f, soln_sub, x_sub)
         x_rec = get_reconstruction(soln_sub, f_sub)

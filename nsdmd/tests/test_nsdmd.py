@@ -1,5 +1,9 @@
 import numpy as np
 from nsdmd.nsdmd import opt_dmd_win
+from nsdmd.nsdmd import opt_dmd_with_bandpass
+from nsdmd.nsdmd import _bandpass_x
+from nsdmd.nsdmd import _bandpass_guess
+from nsdmd.nsdmd import _bandpass_exclude
 from nsdmd.nsdmd import group_by_similarity
 from nsdmd.nsdmd import get_red_init
 from nsdmd.nsdmd import feature_init_remove
@@ -36,6 +40,18 @@ def test_opt_dmd_win():
     assert np.allclose(np.angle(res_p)[0,0,:], np.ones(99)*np.angle(res_p)[0,0,0]) # phase
     assert np.allclose(np.abs(res_p)[0,0,:], ans_p, 0.0001) # amplitude
     assert np.allclose(res_w, ans_w) # windows
+
+def test_opt_dmd_with_bandpass():
+    assert False, "TODO"
+
+def test__bandpass_x():
+    assert False, "TODO"
+
+def test__bandpass_guess():
+    assert False, "TODO"
+    
+def test__bandpass_exclude():
+    assert False, "TODO"
     
 def test_group_by_similarity():
     freqs = np.array([[1,-1],[2,-2],[2.1,-2.1],[1,-1]])
