@@ -4,6 +4,33 @@ from nsdmd import utils
 from scipy.stats import circmean
 
 ################## Classes
+# from attrs import define
+# @define
+# class NSDMD:
+#     opt_win: int = 500
+#     opt_stride: int = 100
+#     opt_rank: int = 20
+#     bandpass: list[list[int]] = None
+#     bandpass_trim: int = 500
+#     sim_thresh_freq: float = 0.2
+#     sim_thresh_phi_amp: float = 0.95
+#     drift_N: int = 51
+#     exact_var_thresh: float = 0.01
+#     feature_init: float, int = None
+#     feature_N: int = 20
+#     feature_seq_method: str = 'SBS'
+#     feature_f_method: str = 'exact'
+#     feature_maxiter: int = 5
+#     feature_final_num: int = None
+#     feature_maxiter_float: int = 1
+#     grad_alpha: float = 0.1
+#     grad_beta: float = 0.1
+#     grad_N: int = 20
+#     grad_lr: float = 0.01
+#     grad_maxiter: int = 100
+#     grad_fit_coupling: bool = False
+#     verbose: bool = False
+
 
 class NSDMD():
     def __init__(self, opt_win=500, opt_stride=100, opt_rank=20, bandpass=None, bandpass_trim=500, \
