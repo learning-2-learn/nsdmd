@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.signal import welch
 from nsdmd.nsdmd import opt_dmd_win
 from nsdmd.nsdmd import opt_dmd_with_bandpass
 from nsdmd.nsdmd import _bandpass_x
@@ -59,15 +60,42 @@ def test_opt_dmd_with_bandpass():
 
 
 def test__bandpass_x():
-    assert False, "TODO"
+    x = np.random.normal(0, 1, size=(2,10000))
+    x_b = _bandpass_x(x, 1000, 100, 200, trim=100)
+    assert np.allclose(np.array(x_b.shape), np.array([2,9800]))
+    
+    f_b, p_b = welch(x_b[0], 1000)
+    res_l = p_b[np.argwhere(f_b<80)[:,0]]
+    res_h = p_b[np.argwhere(f_b>220)[:,0]]
+    assert np.all(res_h < 0.001)
+    assert np.all(res_l < 0.001)
 
 
 def test__bandpass_guess():
-    assert False, "TODO"
+    res = _bandpass_guess(5,10,1000)
+    assert np.allclose(res[::2], -res[1::2])
+    assert np.all((res[::2]>5) & (res[::2]<10))
+    
+    res = _bandpass_guess(5,10,2, [7,-7])
+    assert np.allclose(res, np.array([7,-7]))
 
 
 def test__bandpass_exclude():
-    assert False, "TODO"
+    freq = 5*np.ones((4,2))
+    freq[:,1] = 10
+    freq[0,0] = 10
+
+    phi = np.ones((4,2,6))
+    res_f, res_p = _bandpass_exclude(freq, phi, 4, 6)
+    
+    ans_f = 5*np.ones((4,1))
+    ans_f[0] = 0
+    
+    ans_p = np.ones((4,1,6))
+    ans_p[0] = 0
+    
+    assert np.allclose(ans_f, res_f)
+    assert np.allclose(ans_p, res_p)
 
 
 def test_group_by_similarity():

@@ -427,6 +427,9 @@ def _bandpass_guess(bp_low, bp_high, rank, initial_guess=None):
         assert (
             len(initial_guess) == rank
         ), "Length of initial guess must be the same as rank"
+        assert (
+            np.all((np.abs(initial_guess)>bp_low) & (np.abs(initial_guess)<bp_high))
+        )
         guess = initial_guess
     return guess
 
