@@ -19,9 +19,7 @@ def test_butter_pass_filter():
     f_h, p_h = welch(x_h, 1000)
     f_l, p_l = welch(x_l, 1000)
     res_h = p_h[np.argwhere(f_h<80)[:,0]]
-    ans_h = np.zeros(np.sum(f_h<80))
     res_l = p_l[np.argwhere(f_l>120)[:,0]]
-    ans_l = np.zeros(np.sum(f_l>120))
     assert np.all(res_h < 0.001)
     assert np.all(res_l < 0.001)
 
