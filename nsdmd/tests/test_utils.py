@@ -13,12 +13,26 @@ from nsdmd.utils import _butter_pass
 
 
 def test_butter_pass_filter():
-    assert False, "TODO"
+    x = np.random.normal(0, 1, size=10000)
+    x_h = butter_pass_filter(x, 100, 1000, 'high')
+    x_l = butter_pass_filter(x, 100, 1000, 'low')
+    f_h, p_h = welch(x_h, 1000)
+    f_l, p_l = welch(x_l, 1000)
+    res_h = p_h[np.argwhere(f_h<80)[:,0]]
+    ans_h = np.zeros(np.sum(f_h<80))
+    res_l = p_l[np.argwhere(f_l>120)[:,0]]
+    ans_l = np.zeros(np.sum(f_l>120))
+    assert np.all(res_h < 0.001)
+    assert np.all(res_l < 0.001)
 
-
-def test__buter_pass():
-    assert False, "TODO"
-
+def test__butter_pass():
+    bh, ah = _butter_pass(250,1000, 'high', order=1)
+    bl, al = _butter_pass(250,1000, 'low', order=1)
+    ans_bh = np.array([0.5,-0.5])
+    ans_bl = np.array([0.5,0.5])
+    ans_ah = np.array([1,0])
+    ans_al = np.array([1,0])
+    assert np.allclose(np.array([bh, ah, bl, al]), np.array([ans_bh, ans_ah, ans_bl, ans_al]))
 
 def test_cos_dist():
     ans_1 = 0.0
