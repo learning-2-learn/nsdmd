@@ -20,6 +20,7 @@ from nsdmd.nsdmd import grad_f_amp
 from nsdmd.nsdmd import feature_selector
 from nsdmd.nsdmd import _SBS
 from nsdmd.nsdmd import _SFS
+from nsdmd.nsdmd import guess_best_fit_idx
 
 def test_opt_dmd_win():
     #freqs are 1,-1,2,-2
@@ -285,3 +286,6 @@ def test__SBS():
 def test__SFS():
     
     assert False, 'TODO'
+    
+def test_guess_best_fit_idx():
+    assert False, "TODO"

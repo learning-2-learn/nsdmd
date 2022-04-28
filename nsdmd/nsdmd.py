@@ -36,7 +36,18 @@ class NSDMD():
         self.grad_fit_coupling = grad_fit_coupling
         self.verbose = verbose
         
+    def fit(self, x, t, sr, initial_freq_guess=None):
+        self.fit_opt(x, t, sr, initial_freq_guess=initial_freq_guess)
+        self.fit_reduction(x, len(t), sr)
+        guess = guess_best_fit_idx(self.num_modes_, self.errors_)
+        if self.verbose:
+            print('Guessing '+str(guess)+' number of modes')
+        self.fit_f(x, len(t), sr, guess)
+        return self
+        
     def fit_opt(self, x, t, sr, initial_freq_guess=None):
+        if self.verbose:
+            print('Starting OPT-DMD...')
         if self.bandpass is None:
             f, p, w = opt_dmd_win(x, t, self.opt_win, self.opt_stride, self.opt_rank, initial_freq_guess)
             self.freqs_ = f
@@ -840,6 +851,26 @@ def _SFS(soln, x, f_method, N, final_num=None, floating=False, maxiter_float=1, 
     
     num_modes = np.array(num_modes)
     return(idx_all, total_error, num_modes)
+
+
+def guess_best_fit_idx(num_modes, errors, alpha=0.0000001):
+    '''
+    Tries to guess the best number of modes based on cosine distance
+    Adds a penalty to larger number of modes
+    
+    Parameters
+    ----------
+    num_modes : number of modes for each error
+    errors : errors
+    alpha : amount of penalty for large number of modes
+    
+    Returns
+    -------
+    num : the best number of modes, as chosen by this method
+    '''
+    errors_reg = 1 - np.array(errors) + np.array([alpha*i for i in num_modes])
+    num = num_modes[np.argmin(errors_reg)]
+    return(num)
 
 ###################### Gradient Descent
 
