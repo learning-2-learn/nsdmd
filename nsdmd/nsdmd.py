@@ -85,6 +85,9 @@ class NSDMD:
 
     def fit(self, x, t, sr, initial_freq_guess=None):
         self.fit_opt(x, t, sr, initial_freq_guess=initial_freq_guess)
+        if self.bandpass is not None:
+            x = x[:,self.bandpass_trim:-self.bandpass_trim]
+            t = t[self.bandpass_trim:-self.bandpass_trim]
         self.fit_reduction(x, len(t), sr)
         guess = guess_best_fit_idx(self.num_modes_, self.errors_)
         if self.verbose:
