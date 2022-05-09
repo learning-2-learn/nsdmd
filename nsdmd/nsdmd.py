@@ -42,6 +42,7 @@ class NSDMD:
         bandpass_trim=500,
         sim_thresh_freq=0.2,
         sim_thresh_phi_amp=0.95,
+        drift_flag=True,
         drift_N=51,
         exact_var_thresh=0.01,
         feature_init=None,
@@ -66,6 +67,7 @@ class NSDMD:
         self.bandpass_trim = bandpass_trim
         self.sim_thresh_freq = sim_thresh_freq
         self.sim_thresh_phi_amp = sim_thresh_phi_amp
+        self.drift_flag = drift_flag
         self.drift_N = drift_N
         self.exact_var_thresh = exact_var_thresh
         self.feature_init = feature_init
@@ -149,6 +151,10 @@ class NSDMD:
         )
 
         idx_init = get_red_init(group_idx, len(self.windows_))
+        if not self.drift_flag:
+            #Randomly picks solutions instead of drift
+            for i in range(len(idx_init)):
+                idx_init[i,0] = np.ones(idx_init.shape[2])*np.random.choice(np.unique(idx_init[i,0]))
         idx_init = idx_init[
             ~np.all(self.freqs_[tuple(np.transpose(idx_init, [1, 0, 2]))] == 0, axis=1)
         ]
@@ -359,7 +365,7 @@ def opt_dmd_with_bandpass(
             initial_guess
         ), "Guess must be of same length as bp_ranges"
         assert (
-            len(initial_guess.shape[1]) == rank
+            initial_guess.shape[1] == rank
         ), "Guess must have the same number of modes as rank"
 
     t = t.copy()[trim:-trim]
@@ -370,7 +376,10 @@ def opt_dmd_with_bandpass(
             print("Starting bandpass freq: " + str(bp[0]) + " - " + str(bp[1]) + " Hz")
 
         x_filt = _bandpass_x(x, sr, bp[0], bp[1], trim=trim)
-        guess = _bandpass_guess(bp[0], bp[1], rank, initial_guess)
+        if initial_guess is not None:
+            guess = _bandpass_guess(bp[0], bp[1], rank, initial_guess[i])
+        else:
+            guess = _bandpass_guess(bp[0], bp[1], rank, initial_guess)
 
         f, p, w = opt_dmd_win(x_filt, t, w_len, stride, rank, guess)
         f, p = _bandpass_exclude(f, p, bp[0], bp[1])
@@ -400,7 +409,8 @@ def _bandpass_x(x, sr, bp_low, bp_high, trim=None):
     """
     temp = utils.butter_pass_filter(x.copy(), bp_low, int(sr), "high")
     temp2 = utils.butter_pass_filter(temp, bp_high, int(sr), "low")
-    x_filt = temp2 / np.std(temp2, axis=-1)[:, None]
+    # x_filt = temp2 / np.std(temp2, axis=-1)[:, None] # Seems to mess things up??
+    x_filt = temp2
 
     if trim is not None:
         x_filt = x_filt[:, trim:-trim]
@@ -665,11 +675,12 @@ def feature_init_remove(soln, freqs, x, sr, thresh=0.2):
     -------
     idxs : list of indicies that surpass threshold
     """
+    freqs = np.abs(freqs)
     f = np.ones((1, soln.shape[-1]))
     errors = np.empty((len(soln)))
     for i in range(len(soln)):
         soln_sub = soln[[i]]
-        x_sub = _bandpass_x(x, sr, np.max([freqs[i] - 1, 1.1]), freqs[i] + 1)
+        x_sub = _bandpass_x(x, sr, np.max([freqs[i] - 1, 0.1]), freqs[i] + 1)
 
         f_sub = grad_f_amp(f, soln_sub, x_sub)
         x_rec = get_reconstruction(soln_sub, f_sub)
@@ -926,9 +937,9 @@ def _SBS(
     total_error : list of errors for each step
     num_modes : number of modes for each step
     """
-    if final_num is None or final_num > soln.shape[0] or final_num <= 0:
+    if final_num is None or final_num <= 0:
         final_num = 0
-    elif final_num == soln.shape[0]:
+    elif final_num >= soln.shape[0]:
         final_num = soln.shape[0] - 1
 
     if verbose:
