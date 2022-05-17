@@ -42,6 +42,7 @@ class NSDMD:
         bandpass_trim=500,
         sim_thresh_freq=0.2,
         sim_thresh_phi_amp=0.95,
+        sim_group_size=1,
         drift_flag=True,
         drift_N=51,
         exact_var_thresh=0.01,
@@ -67,6 +68,7 @@ class NSDMD:
         self.bandpass_trim = bandpass_trim
         self.sim_thresh_freq = sim_thresh_freq
         self.sim_thresh_phi_amp = sim_thresh_phi_amp
+        self.sim_group_size = sim_group_size
         self.drift_flag = drift_flag
         self.drift_N = drift_N
         self.exact_var_thresh = exact_var_thresh
@@ -150,7 +152,7 @@ class NSDMD:
             self.freqs_, self.phis_, self.sim_thresh_freq, self.sim_thresh_phi_amp
         )
 
-        idx_init = get_red_init(group_idx, len(self.windows_))
+        idx_init = get_red_init(group_idx, len(self.windows_), self.sim_group_size)
         if not self.drift_flag:
             #Randomly picks solutions instead of drift
             for i in range(len(idx_init)):
@@ -627,7 +629,7 @@ def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
     return groups
 
 
-def get_red_init(group_idx, num_windows):
+def get_red_init(group_idx, num_windows, min_group_size=1):
     """
     Gets the initial reduction of subselection of indicies from similarities
 
@@ -635,6 +637,7 @@ def get_red_init(group_idx, num_windows):
     ----------
     group_idx : output of group_by_similarity, list of groups of similar indicies
     num_windows : total number of windows
+    min_group_size : keeps only groups with a groupsize equal or larger than the threshold
 
     Returns
     -------
@@ -643,16 +646,17 @@ def get_red_init(group_idx, num_windows):
     idx_red = []
     for j, groups in enumerate(group_idx):
         for g in groups:
-            min_val = g[0]
-            max_val = g[-1]
-            temp = np.hstack(
-                (
-                    np.ones((min_val), dtype=int) * min_val,
-                    g,
-                    np.ones((num_windows - max_val - 1), dtype=int) * max_val,
+            if len(g)>=min_group_size:
+                min_val = g[0]
+                max_val = g[-1]
+                temp = np.hstack(
+                    (
+                        np.ones((min_val), dtype=int) * min_val,
+                        g,
+                        np.ones((num_windows - max_val - 1), dtype=int) * max_val,
+                    )
                 )
-            )
-            idx_red.append([temp, np.ones(len(temp)) * j])
+                idx_red.append([temp, np.ones(len(temp)) * j])
     idx_red = np.array(idx_red, dtype=int)
     return idx_red
 
