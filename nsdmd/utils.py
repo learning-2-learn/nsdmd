@@ -198,11 +198,18 @@ def make_network(freq, t_len, phi_amp, phi_phase, sr=1000, time_mod=0, coupling=
     else:
         net = phi_amp[:, None] * phi_t * np.array(time_mod)[None, :]
 
-    f = (
-        np.sum((phi_amp) ** 2, axis=0) ** 0.5
-        * np.array(time_mod)[None, :]
-        * coupling[np.arange(t_len, 2 * t_len) + phi_phase[:, None]]
-    )
+    if len(phi_phase.shape)>1:
+        f = (
+            np.sum((phi_amp) ** 2, axis=0) ** 0.5
+            * np.array(time_mod)[None, :]
+            * coupling[np.arange(t_len, 2 * t_len) + phi_phase]
+        )
+    else:
+        f = (
+            np.sum((phi_amp) ** 2, axis=0) ** 0.5
+            * np.array(time_mod)[None, :]
+            * coupling[np.arange(t_len, 2 * t_len) + phi_phase[:, None]]
+        )
 
     c = coupling[t_len : 2 * t_len]
 
