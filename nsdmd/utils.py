@@ -142,6 +142,7 @@ def make_network(freq, t_len, phi_amp, phi_phase, sr=1000, time_mod=0, coupling=
     t_len : time length of network
     phi_amp : amplitude of channels
     phi_phase : phase of channels in number of time steps (must be length of phi_amp)
+        It can have shape (length of phi_amp, t_len)
     sr : sampling rate
     time_mod : modulation of time series (multiplies by time series).
         Can be int/float (if freq) or manual series (must be of length t_len)
@@ -183,7 +184,11 @@ def make_network(freq, t_len, phi_amp, phi_phase, sr=1000, time_mod=0, coupling=
 
     phase_in = np.cumsum(freq / sr)  # Adds integral into cosine
     t = np.cos(2 * np.pi * phase_in) * coupling
-    phi_t = t[np.arange(t_len, 2 * t_len) + phi_phase[:, None]]
+    if len(phi_phase.shape)>1:
+        assert phi_phase.shape[1] == t_len
+        phi_t = t[np.arange(t_len, 2 * t_len) + phi_phase]
+    else:
+        phi_t = t[np.arange(t_len, 2 * t_len) + phi_phase[:, None]]
 
     phi_amp = phi_amp / np.sum(phi_amp**2, axis=0) ** 0.5  # Normalize
 
