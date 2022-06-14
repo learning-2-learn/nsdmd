@@ -14,6 +14,7 @@ from scipy.stats import circmean
 #     bandpass_trim: int = 500
 #     sim_thresh_freq: float = 0.2
 #     sim_thresh_phi_amp: float = 0.95
+#     sim_thresh_phi_phase: float = 0.05
 #     drift_N: int = 51
 #     exact_var_thresh: float = 0.01
 #     feature_init: float, int = None
@@ -42,6 +43,7 @@ class NSDMD:
         bandpass_trim=500,
         sim_thresh_freq=0.2,
         sim_thresh_phi_amp=0.95,
+        sim_thresh_phi_phase=0.05,
         sim_group_size=1,
         drift_flag=True,
         drift_N=51,
@@ -68,6 +70,7 @@ class NSDMD:
         self.bandpass_trim = bandpass_trim
         self.sim_thresh_freq = sim_thresh_freq
         self.sim_thresh_phi_amp = sim_thresh_phi_amp
+        self.sim_thresh_phi_phase = sim_thresh_phi_phase
         self.sim_group_size = sim_group_size
         self.drift_flag = drift_flag
         self.drift_N = drift_N
@@ -149,7 +152,7 @@ class NSDMD:
         if self.verbose:
             print("Gathering modes...")
         group_idx = group_by_similarity(
-            self.freqs_, self.phis_, self.sim_thresh_freq, self.sim_thresh_phi_amp
+            self.freqs_, self.phis_, self.opt_stride/sr, self.sim_thresh_freq, self.sim_thresh_phi_amp, self.sim_thresh_phi_phase
         )
 
         idx_init = get_red_init(group_idx, len(self.windows_), self.sim_group_size)
@@ -586,10 +589,9 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, sr):
     return (soln, freqs_all, phis_all)
 
 
-def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
+def group_by_similarity(freqs, phis, deltaT, thresh_freq=0.2, thresh_phi_amp=0.95, thresh_phi_phase=0.05):
     """
-    Groups all modes based on frequencies and phi amplitudes.
-    Note : does NOT look at phi phases (TODO)
+    Groups all modes based on frequencies, phi amplitudes, and phi angles.
     Note : modes are expected to be in order of pairs, where each pair represents the positive and negative frequency.
         This function cannot currently handle non-pairs
     Note : currently cannot control threshold of polarity
@@ -598,9 +600,12 @@ def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
     ----------
     freqs : all frequencies with shape (number of windows, number of modes)
     phis : all phis with shape (number of windows, number of modes, number of recordings)
+    deltaT: the time difference between all pairs of snapshots in seconds. Assumes consistent sampling rate
     thresh_freq : frequency threshold. Any pair of frequencies with a smaller difference is 'similar'
     thresh_phi_amp : phi_amp threshold. Any pair with larger value is 'similar'
         value is computed by cosine distance metric
+    thresh_phi_phase : phi_phase threshold. Any pair with smaller value is 'similar'
+        value is MSE
 
     Returns
     -------
@@ -612,12 +617,20 @@ def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
     groups = []
     for i in range(0, freqs.shape[1]):
         if i % 2 == 0:
+            temp = np.angle(phis[:,i,:])
+            tempf = freqs[:,i]
+            #Note below that we did 2 divided by 2. This aligns forward and backwards
+            p_ahead = ((temp + (np.pi*tempf*deltaT)[:,None]) % (2*np.pi))[:-1]
+            p_back = ((temp - (np.pi*tempf*deltaT)[:,None]) % (2*np.pi))[1:]
+            p_diff = (p_ahead - p_back + np.pi)%(2*np.pi) - np.pi
             groups.append(
                 _group_by_freq_phi(
                     freqs[:, i],
                     np.abs(phis[:, i, :]),
+                    p_diff,
                     thresh_freq=thresh_freq,
                     thresh_phi_amp=thresh_phi_amp,
+                    thresh_phi_phase=thresh_phi_phase
                 )
             )
         else:
@@ -625,7 +638,10 @@ def group_by_similarity(freqs, phis, thresh_freq=0.2, thresh_phi_amp=0.95):
             temp2 = _group_by_polarity(
                 np.abs(phis[:, i - 1, :]), np.abs(phis[:, i, :]), "phi_amp_pol"
             )
-            groups.append([[g] for g in np.unique(np.hstack((temp1, temp2)))])
+            temp3 = _group_by_polarity(
+                np.angle(phis[:, i - 1, :]), -np.angle(phis[:, i, :]), "phi_angle_pol"
+            )
+            groups.append([[g] for g in np.unique(np.hstack((temp1, temp2, temp3)))])
     return groups
 
 
@@ -1452,12 +1468,14 @@ def _group_by_polarity(x1, x2, dtype, thresh=None):
         if thresh == None:
             thresh = 0.02
     elif dtype == "phi_angle_pol":
-        print("todo")
-        return []
+        diff = (x1 - x2 + np.pi)%(2*np.pi) - np.pi
+        com = np.sqrt(np.sum(diff**2, axis=1)) / diff.shape[1]
+        if thresh == None:
+            thresh = 0.05
     return np.argwhere(com > thresh)[:, 0]
 
 
-def _group_by_freq_phi(freq, phi_amp, thresh_freq=0.2, thresh_phi_amp=0.95):
+def _group_by_freq_phi(freq, phi_amp, phi_phase, thresh_freq=0.2, thresh_phi_amp=0.95, thresh_phi_phase=0.05):
     """
     forms groups where the com (comparisons) are comparing consecutive things
     """
@@ -1469,6 +1487,7 @@ def _group_by_freq_phi(freq, phi_amp, thresh_freq=0.2, thresh_phi_amp=0.95):
             if (
                 np.abs(freq[i + 1] - freq[i]) < thresh_freq
                 and utils.cos_dist(phi_amp[i], phi_amp[i + 1]) > thresh_phi_amp
+                and np.sqrt(np.sum(phi_phase[i]**2))/len(phi_phase[i]) < thresh_phi_phase
             ):
                 groups.append([i, i + 1])
                 in_group = True
@@ -1480,6 +1499,7 @@ def _group_by_freq_phi(freq, phi_amp, thresh_freq=0.2, thresh_phi_amp=0.95):
             if (
                 np.abs(freq[i + 1] - freq[i]) < thresh_freq
                 and utils.cos_dist(phi_amp[i], phi_amp[i + 1]) > thresh_phi_amp
+                and np.sqrt(np.sum(phi_phase[i]**2))/len(phi_phase[i]) < thresh_phi_phase
             ):
                 if in_group:
                     groups[group_num].append(i + 1)
