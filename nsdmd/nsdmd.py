@@ -1287,6 +1287,15 @@ def grad_f_init(x, soln, beta, N):
             top = soln[r, :, t] @ x[:, t]
             bot = ((soln[r, :, t] @ soln[r, :, t])) + beta * N
             f_init[r, t] = top / bot
+    
+    # Mirrors data before low pass filtering data
+    f_init_long = np.empty((f_init.shape[0], 3*f_init.shape[1]))
+    f_init_long[:,:f_init.shape[1]] = f_init[:,::-1]
+    f_init_long[:,f_init.shape[1]:2*f_init.shape[1]] = f_init[:,::1]
+    f_init_long[:,2*f_init.shape[1]:] = f_init[:,::-1]
+    f_init = utils.butter_pass_filter(f_init_long, 2, 1000, 'low')[:,f_init.shape[1]:2*f_init.shape[1]]
+    f_init = grad_f_amp(f_init, soln, x)
+            
     return f_init
 
 
