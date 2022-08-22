@@ -59,6 +59,7 @@ class NSDMD:
         grad_beta=0.1,
         grad_N=20,
         grad_lr=0.01,
+        grad_momentum=0.9,
         grad_maxiter=100,
         grad_fit_coupling=False,
         verbose=False,
@@ -86,6 +87,7 @@ class NSDMD:
         self.grad_beta = grad_beta
         self.grad_N = grad_N
         self.grad_lr = grad_lr
+        self.grad_momentum = grad_momentum
         self.grad_maxiter = grad_maxiter
         self.grad_fit_coupling = grad_fit_coupling
         self.verbose = verbose
@@ -205,6 +207,7 @@ class NSDMD:
             self.grad_alpha,
             self.grad_beta,
             self.grad_lr,
+            self.grad_momentum,
             self.feature_maxiter,
             self.grad_fit_coupling,
             delay,
@@ -249,6 +252,7 @@ class NSDMD:
             self.grad_beta,
             self.grad_N,
             self.grad_lr,
+            self.grad_momentum,
             self.grad_maxiter,
             self.grad_fit_coupling,
             self.delay_hat_,
@@ -785,6 +789,7 @@ def feature_selector(
     grad_alpha=0.1,
     grad_beta=0.1,
     grad_lr=0.01,
+    grad_momentum=0.9,
     maxiter=5,
     grad_fit_coupling=False,
     grad_delay=None,
@@ -810,6 +815,7 @@ def feature_selector(
     grad_alpha : alpha for gradient descent
     grad_beta : beta for gradient descent
     grad_lr : lr for gradient descent
+    grad_momentum : momentum for gradient descent
     maxiter : how many runs for quick gradient descent
     grad_fit_coupling : whether to fit coupling for gradient descent
     grad_delay : coupling delay for gradient descent
@@ -836,6 +842,7 @@ def feature_selector(
                 grad_alpha,
                 grad_beta,
                 grad_lr,
+                grad_momentum,
                 maxiter,
                 grad_fit_coupling,
                 grad_delay,
@@ -855,6 +862,7 @@ def feature_selector(
                 grad_alpha,
                 grad_beta,
                 grad_lr,
+                grad_momentum,
                 maxiter,
                 grad_fit_coupling,
                 grad_delay,
@@ -874,6 +882,7 @@ def feature_selector(
                 grad_alpha,
                 grad_beta,
                 grad_lr,
+                grad_momentum,
                 maxiter,
                 grad_fit_coupling,
                 grad_delay,
@@ -893,6 +902,7 @@ def feature_selector(
                 grad_alpha,
                 grad_beta,
                 grad_lr,
+                grad_momentum,
                 maxiter,
                 grad_fit_coupling,
                 grad_delay,
@@ -922,6 +932,7 @@ def _SBS(
     grad_alpha=0.1,
     grad_beta=0.1,
     grad_lr=0.01,
+    grad_momentum=0.9,
     maxiter=5,
     grad_fit_coupling=False,
     grad_delay=None,
@@ -946,6 +957,7 @@ def _SBS(
     grad_alpha : alpha for gradient descent
     grad_beta : beta for gradient descent
     grad_lr : lr for gradient descent
+    grad_momentum : momentum for gradient descent
     maxiter : how many runs for quick gradient descent
     grad_fit_coupling : whether to fit coupling for gradient descent
     grad_delay : coupling delay for gradient descent
@@ -979,6 +991,7 @@ def _SBS(
             grad_beta,
             N,
             grad_lr,
+            grad_momentum,
             maxiter,
             grad_fit_coupling,
             grad_delay,
@@ -1024,6 +1037,7 @@ def _SBS(
                     grad_beta,
                     N,
                     grad_lr,
+                    grad_momentum,
                     maxiter,
                     grad_fit_coupling,
                     grad_delay,
@@ -1061,6 +1075,7 @@ def _SBS(
                         grad_beta,
                         N,
                         grad_lr,
+                        grad_momentum,
                         maxiter,
                         grad_fit_coupling,
                         grad_delay,
@@ -1107,6 +1122,7 @@ def _SFS(
     grad_alpha=0.1,
     grad_beta=0.1,
     grad_lr=0.01,
+    grad_momentum=0.9,
     maxiter=5,
     grad_fit_coupling=False,
     grad_delay=None,
@@ -1131,6 +1147,7 @@ def _SFS(
     grad_alpha : alpha for gradient descent
     grad_beta : beta for gradient descent
     grad_lr : lr for gradient descent
+    grad_momentum : momentum for gradient descent
     maxiter : how many runs for quick gradient descent
     grad_fit_coupling : whether to fit coupling for gradient descent
     grad_delay : coupling delay for gradient descent
@@ -1180,6 +1197,7 @@ def _SFS(
                     grad_beta,
                     N,
                     grad_lr,
+                    grad_momentum,
                     maxiter,
                     grad_fit_coupling,
                     grad_delay,
@@ -1211,6 +1229,7 @@ def _SFS(
                         grad_beta,
                         N,
                         grad_lr,
+                        grad_momentum,
                         maxiter,
                         grad_fit_coupling,
                         grad_delay,
@@ -1339,7 +1358,7 @@ def grad_f_grad_loss(f, x, soln, alpha, beta, N):
     return dLdf
 
 
-def grad_f(x, soln, alpha, beta, N, lr, maxiter, fit_coupling=False, t_delay=None):
+def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, fit_coupling=False, t_delay=None):
     """
     Performs gradient descent to approximate f
     Note : assumes beta is constant, unlike in paper (TODO)
@@ -1352,6 +1371,7 @@ def grad_f(x, soln, alpha, beta, N, lr, maxiter, fit_coupling=False, t_delay=Non
     beta : number indicating strength of temporal smoothing
     N : number of timepoints to smooth over
     lr : learning rate
+    momentum : amount of momentum to include
     maxiter : total number of iterations
     fit_coupling : flag telling whether or not to fit time delays with individual channels
     t_delay : time delays of each channel with shape (number of modes, number of channels)
@@ -1368,6 +1388,7 @@ def grad_f(x, soln, alpha, beta, N, lr, maxiter, fit_coupling=False, t_delay=Non
         idx[idx >= f.shape[1]] = f.shape[1] - 1
         f_3D = np.empty((soln.shape))
 
+    dLdf_old = 0
     for k in range(maxiter):
         if fit_coupling:
             for i in range(t_delay.shape[0]):
@@ -1377,11 +1398,12 @@ def grad_f(x, soln, alpha, beta, N, lr, maxiter, fit_coupling=False, t_delay=Non
         else:
             dLdf = grad_f_grad_loss(f, x, soln, alpha, beta, N)
 
-        f = f - lr * dLdf
+        f = f - lr * (dLdf + momentum * dLdf_old)
         f[f < 0] = 0
         f[:, N:-N] = utils.moving_average_dim(f, 2 * N + 1, -1)
         f[:, :N] = np.mean(f[:, :N], axis=-1)[:, None]
         f[:, -N:] = np.mean(f[:, -N:], axis=-1)[:, None]
+        dLdf_old = dLdf
     if fit_coupling:
         for i in range(t_delay.shape[0]):
             for j in range(t_delay.shape[1]):
