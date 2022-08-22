@@ -5,6 +5,35 @@ from scipy.signal import filtfilt
 
 #################### Random Functions
 
+def diff_of_gauss(sig1, sig2, num_points):
+    '''
+    Calculates the difference of gaussians for the desired standard deviations
+    Note that the width is calculated based on sig1 and sig2 and NOT on the sampling rate
+    Also note that this always make sig1 have the smaller standard deviation
+    
+    Parameters
+    ------------------
+    sig1 : first standard deviation
+    sig2 : second standard deviation
+    num_points : number of points to include in array
+    
+    Returns
+    ------------------
+    diff : difference in Gaussians
+    '''
+    if sig1 < sig2:
+        s1 = sig1
+        s2 = sig2
+    else:
+        s1 = sig2
+        s2 = sig1
+    
+    x = np.arange(-num_points/2+0.5, num_points/2+0.5, 1)
+    a = np.exp(-x**2 / (2 * s1**2)) / s1
+    b = np.exp(-x**2 / (2 * s2**2)) / s2
+    
+    diff = (a - b) / ((2*np.pi)**0.5)
+    return diff
 
 def cos_dist(a, b):
     """
