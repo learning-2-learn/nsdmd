@@ -1357,7 +1357,6 @@ def grad_f_grad_loss(f, x, soln, alpha, beta, N):
 def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, fit_coupling=False, t_delay=None):
     """
     Performs gradient descent to approximate f
-    Note : assumes beta is constant, unlike in paper (TODO)
 
     Parameters
     ----------
