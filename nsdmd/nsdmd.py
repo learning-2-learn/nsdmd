@@ -1284,17 +1284,15 @@ def guess_best_fit_idx(num_modes, errors, alpha=0.0000001):
 ###################### Gradient Descent
 
 
-def grad_f_init(x, soln, beta, N):
+def grad_f_init(x, soln, beta):
     """
     Finds the initial guess for f based on the gradient descent method
-    Note : assumes beta is constant, unlike in paper (TODO)
 
     Parameters
     ----------
     x : original data matrix with shape (number of channels, time)
     soln : solutions with shape (number of modes, number of channels, time)
-    beta : number indicating strength of temporal smoothing
-    N : number of timepoints to smooth over
+    beta : array indicating strength of temporal smoothing
 
     Returns
     -------
@@ -1304,7 +1302,7 @@ def grad_f_init(x, soln, beta, N):
     for r in range(soln.shape[0]):
         for t in range(soln.shape[2]):
             top = soln[r, :, t] @ x[:, t]
-            bot = ((soln[r, :, t] @ soln[r, :, t])) + beta * N
+            bot = ((soln[r, :, t] @ soln[r, :, t])) + np.sum(beta)
             f_init[r, t] = top / bot
     
     # Mirrors data before low pass filtering data
@@ -1321,7 +1319,6 @@ def grad_f_init(x, soln, beta, N):
 def grad_f_grad_loss(f, x, soln, alpha, beta, N):
     """
     Finds the gradient of the loss function in the gradient descent method
-    Note : assumes beta is constant, unlike in paper (TODO)
     Note : also doesn't do anything at the edge, maybe should implement reflection or something?? (TODO)
 
     Parameters
@@ -1330,7 +1327,7 @@ def grad_f_grad_loss(f, x, soln, alpha, beta, N):
     x : original data with shape (number of channels, time)
     soln : solutions with shape (number of modes, number of channels, time)
     alpha : number indicating strength of l1 regularization
-    beta : number indicating strength of temporal smoothing
+    beta : array of length 2N+1 indicating strength of temporal smoothing
     N : number of timepoints to smooth over
 
     Returns
@@ -1351,12 +1348,11 @@ def grad_f_grad_loss(f, x, soln, alpha, beta, N):
 
     beta_term = np.zeros((f_mean.shape))
     for i in range(1, N + 1):
-        beta_term[:, :-i] = beta_term[:, :-i] - beta * (f_mean[:, i:] - f_mean[:, :-i])
-        beta_term[:, i:] = beta_term[:, i:] + beta * (f_mean[:, i:] - f_mean[:, :-i])
+        beta_term[:, :-i] = beta_term[:, :-i] - beta[N-i] * (f_mean[:, i:] - f_mean[:, :-i])
+        beta_term[:, i:] = beta_term[:, i:] + beta[N+i] * (f_mean[:, i:] - f_mean[:, :-i])
 
     dLdf = l2_term + alpha_term + beta_term
     return dLdf
-
 
 def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, fit_coupling=False, t_delay=None):
     """
@@ -1368,7 +1364,8 @@ def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, fit_coupling=False, t
     x : original data matrix with shape (number of channels, time)
     soln : solutions with shape (number of modes, number of channels, time)
     alpha : number indicating strength of l1 regularization
-    beta : number indicating strength of temporal smoothing
+    beta : number or array with length 2N+1 indicating strength of temporal smoothing
+        if single number, beta will turn into array with length 2N+1
     N : number of timepoints to smooth over
     lr : learning rate
     momentum : amount of momentum to include
@@ -1380,7 +1377,17 @@ def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, fit_coupling=False, t
     -------
     f : approximation of global modulation f
     """
-    f = grad_f_init(x, soln, beta, N)
+    if not (
+        type(beta) == np.float64
+        or type(beta) == np.int64
+        or type(beta) == float
+        or type(beta) == int
+    ):
+        assert len(beta) == 2*N+1, "Length of beta term not correct"
+    else:
+        beta = np.ones(2*N+1) * beta
+    
+    f = grad_f_init(x, soln, beta)
     f[f < 0] = 0
     if fit_coupling:
         idx = t_delay[:, :, None] + np.arange(f.shape[1])[None, None, :]
@@ -1404,6 +1411,7 @@ def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, fit_coupling=False, t
         f[:, :N] = np.mean(f[:, :N], axis=-1)[:, None]
         f[:, -N:] = np.mean(f[:, -N:], axis=-1)[:, None]
         dLdf_old = dLdf
+        
     if fit_coupling:
         for i in range(t_delay.shape[0]):
             for j in range(t_delay.shape[1]):
