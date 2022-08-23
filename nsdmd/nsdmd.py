@@ -1319,7 +1319,6 @@ def grad_f_init(x, soln, beta):
 def grad_f_grad_loss(f, x, soln, alpha, beta, N):
     """
     Finds the gradient of the loss function in the gradient descent method
-    Note : also doesn't do anything at the edge, maybe should implement reflection or something?? (TODO)
 
     Parameters
     ----------
@@ -1328,6 +1327,7 @@ def grad_f_grad_loss(f, x, soln, alpha, beta, N):
     soln : solutions with shape (number of modes, number of channels, time)
     alpha : number indicating strength of l1 regularization
     beta : array of length 2N+1 indicating strength of temporal smoothing
+        reflection is used to mitigate boundary effects
     N : number of timepoints to smooth over
 
     Returns
@@ -1345,11 +1345,15 @@ def grad_f_grad_loss(f, x, soln, alpha, beta, N):
 
     alpha_term = np.ones((f_mean.shape)) * alpha
     alpha_term[f_mean < 0] = -alpha_term[f_mean < 0]
-
-    beta_term = np.zeros((f_mean.shape))
-    for i in range(1, N + 1):
-        beta_term[:, :-i] = beta_term[:, :-i] - beta[N-i] * (f_mean[:, i:] - f_mean[:, :-i])
-        beta_term[:, i:] = beta_term[:, i:] + beta[N+i] * (f_mean[:, i:] - f_mean[:, :-i])
+        
+    beta_term = f_mean * np.sum(beta)
+    f_mean_ex = np.empty((f_mean.shape[0], f_mean.shape[1]+2*N))
+    f_mean_ex[:,:N] = f_mean[:,N:0:-1]
+    f_mean_ex[:,N:-N] = f_mean
+    f_mean_ex[:,-N:] = f_mean[:,-1:-N-1:-1]
+    
+    for i in range(len(beta_term)):
+        beta_term[i] = beta_term[i] - np.convolve(beta, f_mean_ex[i], mode='valid')
 
     dLdf = l2_term + alpha_term + beta_term
     return dLdf
