@@ -62,6 +62,7 @@ class NSDMD:
         grad_momentum=0.9,
         grad_maxiter=100,
         grad_fit_coupling=False,
+        grad_init_lowpass=2,
         verbose=False,
     ):
         self.opt_win = opt_win
@@ -90,6 +91,7 @@ class NSDMD:
         self.grad_momentum = grad_momentum
         self.grad_maxiter = grad_maxiter
         self.grad_fit_coupling = grad_fit_coupling
+        self.grad_init_lowpass = grad_init_lowpass
         self.verbose = verbose
 
     def fit(self, x, t, sr, initial_freq_guess=None):
@@ -208,6 +210,7 @@ class NSDMD:
             self.grad_beta,
             self.grad_lr,
             self.grad_momentum,
+            self.grad_init_lowpass,
             self.feature_maxiter,
             self.grad_fit_coupling,
             delay,
@@ -254,6 +257,7 @@ class NSDMD:
             self.grad_lr,
             self.grad_momentum,
             self.grad_maxiter,
+            self.grad_init_lowpass,
             self.grad_fit_coupling,
             self.delay_hat_,
         )
@@ -701,12 +705,15 @@ def feature_init_remove(soln, freqs, x, sr, thresh=0.2):
     """
     freqs = np.abs(freqs)
     f = np.ones((1, soln.shape[-1]))
+    # f = grad_f_init(x,soln,0)
+    
     errors = np.empty((len(soln)))
     for i in range(len(soln)):
         soln_sub = soln[[i]]
         x_sub = _bandpass_x(x, sr, np.max([freqs[i] - 1, 0.1]), freqs[i] + 1)
 
         f_sub = grad_f_amp(f, soln_sub, x_sub)
+        # f_sub = np.array([f[i]])
         x_rec = get_reconstruction(soln_sub, f_sub)
         errors[i] = get_reconstruction_error(x_rec, x_sub)
 
@@ -790,6 +797,7 @@ def feature_selector(
     grad_beta=0.1,
     grad_lr=0.01,
     grad_momentum=0.9,
+    grad_init_lowpass=None,
     maxiter=5,
     grad_fit_coupling=False,
     grad_delay=None,
@@ -816,6 +824,7 @@ def feature_selector(
     grad_beta : beta for gradient descent
     grad_lr : lr for gradient descent
     grad_momentum : momentum for gradient descent
+    grad_init_lowpass : value of initial guess lowpass (or None if no low pass)
     maxiter : how many runs for quick gradient descent
     grad_fit_coupling : whether to fit coupling for gradient descent
     grad_delay : coupling delay for gradient descent
@@ -843,6 +852,7 @@ def feature_selector(
                 grad_beta,
                 grad_lr,
                 grad_momentum,
+                grad_init_lowpass,
                 maxiter,
                 grad_fit_coupling,
                 grad_delay,
@@ -863,6 +873,7 @@ def feature_selector(
                 grad_beta,
                 grad_lr,
                 grad_momentum,
+                grad_init_lowpass,
                 maxiter,
                 grad_fit_coupling,
                 grad_delay,
@@ -883,6 +894,7 @@ def feature_selector(
                 grad_beta,
                 grad_lr,
                 grad_momentum,
+                grad_init_lowpass,
                 maxiter,
                 grad_fit_coupling,
                 grad_delay,
@@ -903,6 +915,7 @@ def feature_selector(
                 grad_beta,
                 grad_lr,
                 grad_momentum,
+                grad_init_lowpass,
                 maxiter,
                 grad_fit_coupling,
                 grad_delay,
@@ -933,6 +946,7 @@ def _SBS(
     grad_beta=0.1,
     grad_lr=0.01,
     grad_momentum=0.9,
+    grad_init_lowpass=None,
     maxiter=5,
     grad_fit_coupling=False,
     grad_delay=None,
@@ -958,6 +972,7 @@ def _SBS(
     grad_beta : beta for gradient descent
     grad_lr : lr for gradient descent
     grad_momentum : momentum for gradient descent
+    grad_init_lowpass : value of initial guess lowpass (or None if no low pass)
     maxiter : how many runs for quick gradient descent
     grad_fit_coupling : whether to fit coupling for gradient descent
     grad_delay : coupling delay for gradient descent
@@ -993,6 +1008,7 @@ def _SBS(
             grad_lr,
             grad_momentum,
             maxiter,
+            grad_init_lowpass,
             grad_fit_coupling,
             grad_delay,
         )
@@ -1039,6 +1055,7 @@ def _SBS(
                     grad_lr,
                     grad_momentum,
                     maxiter,
+                    grad_init_lowpass,
                     grad_fit_coupling,
                     grad_delay,
                 )
@@ -1077,6 +1094,7 @@ def _SBS(
                         grad_lr,
                         grad_momentum,
                         maxiter,
+                        grad_init_lowpass,
                         grad_fit_coupling,
                         grad_delay,
                     )
@@ -1123,6 +1141,7 @@ def _SFS(
     grad_beta=0.1,
     grad_lr=0.01,
     grad_momentum=0.9,
+    grad_init_lowpass=None,
     maxiter=5,
     grad_fit_coupling=False,
     grad_delay=None,
@@ -1148,6 +1167,7 @@ def _SFS(
     grad_beta : beta for gradient descent
     grad_lr : lr for gradient descent
     grad_momentum : momentum for gradient descent
+    grad_init_lowpass : value of initial guess lowpass (or None if no low pass)
     maxiter : how many runs for quick gradient descent
     grad_fit_coupling : whether to fit coupling for gradient descent
     grad_delay : coupling delay for gradient descent
@@ -1199,6 +1219,7 @@ def _SFS(
                     grad_lr,
                     grad_momentum,
                     maxiter,
+                    grad_init_lowpass,
                     grad_fit_coupling,
                     grad_delay,
                 )
@@ -1231,6 +1252,7 @@ def _SFS(
                         grad_lr,
                         grad_momentum,
                         maxiter,
+                        grad_init_lowpass,
                         grad_fit_coupling,
                         grad_delay,
                     )
@@ -1284,7 +1306,7 @@ def guess_best_fit_idx(num_modes, errors, alpha=0.0000001):
 ###################### Gradient Descent
 
 
-def grad_f_init(x, soln, beta):
+def grad_f_init(x, soln, beta, low_pass=None):
     """
     Finds the initial guess for f based on the gradient descent method
 
@@ -1293,6 +1315,8 @@ def grad_f_init(x, soln, beta):
     x : original data matrix with shape (number of channels, time)
     soln : solutions with shape (number of modes, number of channels, time)
     beta : array indicating strength of temporal smoothing
+    low_pass : either None (indicating no lowpass of initial guess) or a number greater than 0 indicating
+               at what value to low pass filter the initial guess.
 
     Returns
     -------
@@ -1305,13 +1329,15 @@ def grad_f_init(x, soln, beta):
             bot = ((soln[r, :, t] @ soln[r, :, t])) + np.sum(beta)
             f_init[r, t] = top / bot
     
-    # Mirrors data before low pass filtering data
-    f_init_long = np.empty((f_init.shape[0], 3*f_init.shape[1]))
-    f_init_long[:,:f_init.shape[1]] = f_init[:,::-1]
-    f_init_long[:,f_init.shape[1]:2*f_init.shape[1]] = f_init[:,::1]
-    f_init_long[:,2*f_init.shape[1]:] = f_init[:,::-1]
-    f_init = utils.butter_pass_filter(f_init_long, 2, 1000, 'low')[:,f_init.shape[1]:2*f_init.shape[1]]
-    f_init = grad_f_amp(f_init, soln, x)
+    if low_pass is not None:
+        assert low_pass>0, 'Initial low_pass is not greater than 0'
+        # Mirrors data before low pass filtering data
+        f_init_long = np.empty((f_init.shape[0], 3*f_init.shape[1]))
+        f_init_long[:,:f_init.shape[1]] = f_init[:,::-1]
+        f_init_long[:,f_init.shape[1]:2*f_init.shape[1]] = f_init[:,::1]
+        f_init_long[:,2*f_init.shape[1]:] = f_init[:,::-1]
+        f_init = utils.butter_pass_filter(f_init_long, low_pass, 1000, 'low')[:,f_init.shape[1]:2*f_init.shape[1]]
+        f_init = grad_f_amp(f_init, soln, x)
             
     return f_init
 
@@ -1358,7 +1384,7 @@ def grad_f_grad_loss(f, x, soln, alpha, beta, N):
     dLdf = l2_term + alpha_term + beta_term
     return dLdf
 
-def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, fit_coupling=False, t_delay=None):
+def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, init_lowpass=None, fit_coupling=False, t_delay=None):
     """
     Performs gradient descent to approximate f
 
@@ -1373,6 +1399,7 @@ def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, fit_coupling=False, t
     lr : learning rate
     momentum : amount of momentum to include
     maxiter : total number of iterations
+    init_lowpass : value of initial guess lowpass (or None if no low pass)
     fit_coupling : flag telling whether or not to fit time delays with individual channels
     t_delay : time delays of each channel with shape (number of modes, number of channels)
 
@@ -1390,7 +1417,7 @@ def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, fit_coupling=False, t
     else:
         beta = np.ones(2*N+1) * beta
     
-    f = grad_f_init(x, soln, beta)
+    f = grad_f_init(x, soln, beta, init_lowpass)
     f[f < 0] = 0
     if fit_coupling:
         idx = t_delay[:, :, None] + np.arange(f.shape[1])[None, None, :]
