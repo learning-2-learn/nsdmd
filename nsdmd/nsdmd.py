@@ -97,8 +97,8 @@ class NSDMD:
     def fit(self, x, t, sr, initial_freq_guess=None):
         self.fit_opt(x, t, sr, initial_freq_guess=initial_freq_guess)
         if self.bandpass is not None:
-            x = x[:,self.bandpass_trim:-self.bandpass_trim]
-            t = t[self.bandpass_trim:-self.bandpass_trim]
+            x = x[:,self.bandpass_trim:self.bandpass_trim+self.windows_[-1,0]+self.opt_win]
+            t = t[self.bandpass_trim:self.bandpass_trim+self.windows_[-1,0]+self.opt_win]
         self.fit_reduction(x, len(t), sr)
         guess = guess_best_fit_idx(self.num_modes_, self.errors_)
         if self.verbose:
@@ -705,7 +705,7 @@ def feature_init_remove(soln, freqs, x, sr, thresh=0.2):
     """
     freqs = np.abs(freqs)
     f = np.ones((1, soln.shape[-1]))
-    # f = grad_f_init(x,soln,0)
+    # f = grad_f_init(x,soln,0,2)
     
     errors = np.empty((len(soln)))
     for i in range(len(soln)):
