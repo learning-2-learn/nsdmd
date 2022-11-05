@@ -404,7 +404,7 @@ def opt_dmd_with_bandpass(
     return (freqs_, phis_, w)
 
 
-def _bandpass_x(x, sr, bp_low, bp_high, trim=None):
+def _bandpass_x(x, sr, bp_low, bp_high, bp_filter='chebyshev', trim=None):
     """
     Bandpasses data to specified freq range
 
@@ -414,14 +414,21 @@ def _bandpass_x(x, sr, bp_low, bp_high, trim=None):
     sr : sampling rate
     bp_low : lower bandpass range
     bp_high : upper bandpass range
+    bp_filter : type of filter to use to bandpass the data.
+        Can either be 'chebyshev' or 'butter'
     trim : how much of data to trim after bandpassing
 
     Returns
     -------
     x_filt : filtered data
     """
-    temp = utils.butter_pass_filter(x.copy(), bp_low, int(sr), "high")
-    temp2 = utils.butter_pass_filter(temp, bp_high, int(sr), "low")
+    assert bp_filter=='chebyshev' or bp_filter=='butter', 'wrong bandpass filter type'
+    if bp_filter=='butter':   
+        temp = utils.butter_pass_filter(x.copy(), bp_low, int(sr), "high")
+        temp2 = utils.butter_pass_filter(temp, bp_high, int(sr), "low")
+    else:
+        temp = utils.cheb_pass_filter(x.copy(), bp_low, int(sr), "high")
+        temp2 = utils.cheb_pass_filter(temp, bp_high, int(sr), "low")
     # x_filt = temp2 / np.std(temp2, axis=-1)[:, None] # Seems to mess things up??
     x_filt = temp2
 

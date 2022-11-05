@@ -1,6 +1,7 @@
 import numpy as np
 import colorednoise
 from scipy.signal import butter
+from scipy.signal import cheby1
 from scipy.signal import filtfilt
 
 #################### Random Functions
@@ -152,6 +153,49 @@ def _butter_pass(cutoff, fs, btype, order=5):
     nyq = 0.5 * fs
     normal_cutoff = cutoff / nyq
     b, a = butter(order, normal_cutoff, btype=btype, analog=False)
+    return b, a
+
+def cheb_pass_filter(data, cutoff, fs, btype, order=5, db_amp=3, axis=-1):
+    """
+    Butter pass filters a signal with a butter filter
+
+    Parameters
+    ----------
+    data: the signal to filter
+    cutoff: the cutoff frequency
+    fs: sampling rate
+    btype: either \'high\' or \'low\', determines low pass or high pass filter
+    order: the order of the filter
+    db_amp: the amplitude of the passband ripple
+    axis: axis to apply the filter
+
+    Returns
+    -------
+    Either high or low pass filtered data
+    """
+    b, a = _cheb_pass(cutoff, fs, btype, db_amp=db_amp, order=order)
+    y = filtfilt(b, a, data, axis=axis)
+    return y
+
+def _cheb_pass(cutoff, fs, btype, order=5, db_amp=3):
+    """
+    Builds a type 1 chebyshev filter
+
+    Parameters
+    ----------
+    cutoff: the cutoff frequency
+    fs: sampling rate
+    btype: either \'high\' or \'low\', determines low pass or high pass filter
+    order: the order of the filter
+    db_amp: the amplitude of the passband ripple
+
+    Returns
+    -------
+    Either high or low pass filtered
+    """
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = cheby1(order, db_amp, normal_cutoff, btype=btype, analog=False)
     return b, a
 
 
