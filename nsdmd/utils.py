@@ -155,7 +155,7 @@ def _butter_pass(cutoff, fs, btype, order=5):
     b, a = butter(order, normal_cutoff, btype=btype, analog=False)
     return b, a
 
-def cheb_pass_filter(data, cutoff, fs, btype, order=5, db_amp=3, axis=-1):
+def cheb_pass_filter(data, cutoff, fs, btype, order=5, db_amp=1, axis=-1):
     """
     Butter pass filters a signal with a butter filter
 
@@ -177,7 +177,7 @@ def cheb_pass_filter(data, cutoff, fs, btype, order=5, db_amp=3, axis=-1):
     y = filtfilt(b, a, data, axis=axis)
     return y
 
-def _cheb_pass(cutoff, fs, btype, order=5, db_amp=3):
+def _cheb_pass(cutoff, fs, btype, order=5, db_amp=1):
     """
     Builds a type 1 chebyshev filter
 
