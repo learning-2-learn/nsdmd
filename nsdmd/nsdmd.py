@@ -201,6 +201,9 @@ class NSDMD:
             soln,
             x,
             self.feature_N,
+            sr,
+            self.bandpass,
+            self.bandpass_trim,
             self.feature_final_num,
             self.feature_seq_method,
             self.feature_f_method,
@@ -795,6 +798,9 @@ def feature_selector(
     soln,
     x,
     feature_N,
+    sr=1000,
+    bands=None,
+    band_trims=None,
     final_num=None,
     seq_method="SBS",
     f_method="exact",
@@ -822,6 +828,9 @@ def feature_selector(
     soln : solutions with shape (num modes, num chan, time)
     x : true data with shape (num chan, time)
     feature_N : amount of averaging to do on global modulation f
+    sr : sampling rate of x
+    bands : bands to evaluate feature selection over
+    band_trims : amount of data to throw away after bandpassing
     final_num : end number of modes to stop computing feature selection
     seq_method : method of sequential feature selection
     f_method : method of exact or gradient descent
@@ -851,6 +860,9 @@ def feature_selector(
                 x,
                 f_method,
                 feature_N,
+                sr,
+                bands,
+                band_trims,
                 final_num,
                 floating,
                 maxiter_float,
@@ -872,6 +884,9 @@ def feature_selector(
                 x,
                 f_method,
                 feature_N,
+                sr,
+                bands,
+                band_trims,
                 final_num,
                 floating,
                 maxiter_float,
@@ -893,6 +908,9 @@ def feature_selector(
                 x,
                 f_method,
                 feature_N,
+                sr,
+                bands,
+                band_trims,
                 final_num,
                 floating,
                 maxiter_float,
@@ -914,6 +932,9 @@ def feature_selector(
                 x,
                 f_method,
                 feature_N,
+                sr,
+                bands,
+                band_trims,
                 final_num,
                 floating,
                 maxiter_float,
@@ -945,6 +966,9 @@ def _SBS(
     x,
     f_method,
     N,
+    sr=1000,
+    bands=None,
+    band_trims=None,
     final_num=None,
     floating=False,
     maxiter_float=1,
@@ -971,6 +995,9 @@ def _SBS(
     x : true data with shape (num chan, time)
     f_method : method of exact or gradient descent
     N : amount of averaging to do on global modulation f
+    sr : sampling rate of x
+    bands : bands to evaluate feature selection over
+    band_trims : amount of data to throw away after bandpassing
     final_num : end number of modes to stop computing feature selection
     floating : whether to use floating method or not
     maxiter_float : parameter to  stop sequential selector from repeating too many times
@@ -1025,7 +1052,7 @@ def _SBS(
         f_hat = exact_f_from_Bf(B, f, N, var_thresh=exact_var_thresh)
 
     x_rec = get_reconstruction(soln, f_hat)
-    total_error = [get_reconstruction_error(x, x_rec)]
+    total_error = [get_reconstruction_error(x, x_rec, sr, bands, band_trims)]
 
     idx = np.arange(soln.shape[0])
     idx_excluded = []
@@ -1073,7 +1100,7 @@ def _SBS(
                 f_hat = exact_f_from_Bf(B_sub, f_sub, N, var_thresh=exact_var_thresh)
 
             x_rec = get_reconstruction(soln[idx_sub], f_hat)
-            error[j] = get_reconstruction_error(x, x_rec)
+            error[j] = get_reconstruction_error(x, x_rec, sr, bands, band_trims)
 
         total_error.append(np.max(error))
         idx_excluded.append(idx[np.argmax(error)])
@@ -1114,7 +1141,7 @@ def _SBS(
                     )
 
                 x_rec = get_reconstruction(soln[idx_sub], f_hat)
-                error[j] = get_reconstruction_error(x, x_rec)
+                error[j] = get_reconstruction_error(x, x_rec, sr, bands, band_trims)
 
             if np.max(error) > total_error[-1]:
                 total_error.append(np.max(error))
@@ -1140,6 +1167,9 @@ def _SFS(
     x,
     f_method,
     N,
+    sr=1000,
+    bands=None,
+    band_trims=None,
     final_num=None,
     floating=False,
     maxiter_float=1,
@@ -1166,6 +1196,9 @@ def _SFS(
     x : true data with shape (num chan, time)
     f_method : method of exact or gradient descent
     N : amount of averaging to do on global modulation f
+    sr : sampling rate of x
+    bands : bands to evaluate feature selection over
+    band_trims : amount of data to throw away after bandpassing
     final_num : end number of modes to stop computing feature selection
     floating : whether to use floating method or not
     maxiter_float : parameter to  stop sequential selector from repeating too many times
@@ -1236,7 +1269,7 @@ def _SFS(
                 f_hat = exact_f_from_Bf(B_sub, f_sub, N, var_thresh=exact_var_thresh)
 
             x_rec = get_reconstruction(soln[idx_sub], f_hat)
-            error[j] = get_reconstruction_error(x, x_rec)
+            error[j] = get_reconstruction_error(x, x_rec, sr, bands, band_trims)
 
         total_error.append(np.max(error))
         idx = idx + [idx_used[np.argmax(error)]]
@@ -1271,7 +1304,7 @@ def _SFS(
                     )
 
                 x_rec = get_reconstruction(soln[idx_sub], f_hat)
-                error[j] = get_reconstruction_error(x, x_rec)
+                error[j] = get_reconstruction_error(x, x_rec, sr, bands, band_trims)
 
             if np.max(error) > total_error[-1]:
                 total_error.append(np.max(error))
@@ -1509,7 +1542,7 @@ def get_reconstruction(soln, f):
     return x_rec
 
 
-def get_reconstruction_error(x_true, x_rec):
+def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None):
     """
     Calculates the reconstruction error from the original and reconstructed data matricies
 
@@ -1517,12 +1550,28 @@ def get_reconstruction_error(x_true, x_rec):
     ----------
     x_true : true data matrix
     x_rec : reconstructed data matrix
+    sr : sampling rate of data
+    bands : if list of bands, will calculate the cosine distance for each individual band and take the mean
+    trim : amount of data to trim off after bandpassing the data
 
     Returns
     -------
     error : error computed with cosine distance metric
     """
-    error = utils.cos_dist(x_rec.reshape((-1)), x_true.reshape((-1)))
+    # error = utils.cos_dist(x_rec.reshape((-1)), x_true.reshape((-1)))
+    if bands is None:
+        error = utils.cos_dist(x_rec.reshape((-1)), x_true.reshape((-1)))
+    else:
+        bands = np.array(bands)
+        assert len(bands.shape)==2
+        assert bands.shape[1]==2
+        
+        error_b = np.empty(len(bands))
+        for i,bp in enumerate(bands):
+            x_true_b = _bandpass_x(x_true.copy(), sr, bp[0], bp[1], bp_filter='chebyshev', trim=None)
+            x_rec_b = _bandpass_x(x_rec.copy(), sr, bp[0], bp[1], bp_filter='chebyshev', trim=None)
+            error_b[i] = utils.cos_dist(x_rec_b.reshape((-1)), x_true_b.reshape((-1)))
+        error = np.mean(error_b)
     return error
 
 
