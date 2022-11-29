@@ -18,9 +18,10 @@ from nsdmd.nsdmd import grad_f_init
 from nsdmd.nsdmd import grad_f_grad_loss
 from nsdmd.nsdmd import grad_f
 from nsdmd.nsdmd import grad_f_amp
-from nsdmd.nsdmd import feature_selector
-from nsdmd.nsdmd import _SBS
-from nsdmd.nsdmd import _SFS
+from nsdmd.nsdmd import reduction
+# from nsdmd.nsdmd import feature_selector
+# from nsdmd.nsdmd import _SBS
+# from nsdmd.nsdmd import _SFS
 from nsdmd.nsdmd import guess_best_fit_idx
 
 
@@ -373,7 +374,7 @@ def test__SBS():
     x = x1 + x2
     s = np.vstack((x1[None, :, :], x2[None, :, :]))
 
-    res_i, res_e, res_n = _SBS(s, x, "exact", 1, verbose=False)
+    res_i, res_e, res_n = reduction._SBS(s, x, "exact", 1, verbose=False)
     ans_n = np.array([2, 1])
 
     assert np.allclose(res_i[0], np.array([0, 1])), "indexing issue"
