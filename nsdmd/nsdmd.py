@@ -3,36 +3,6 @@ from nsdmd import optdmd
 from nsdmd import utils
 from scipy.stats import circmean
 
-################## Classes
-# from attrs import define
-# @define
-# class NSDMD:
-#     opt_win: int = 500
-#     opt_stride: int = 100
-#     opt_rank: int = 20
-#     bandpass: list[list[int]] = None
-#     bandpass_trim: int = 500
-#     sim_thresh_freq: float = 0.2
-#     sim_thresh_phi_amp: float = 0.95
-#     sim_thresh_phi_phase: float = 0.05
-#     drift_N: int = 51
-#     exact_var_thresh: float = 0.01
-#     feature_init: float, int = None
-#     feature_N: int = 20
-#     feature_seq_method: str = 'SBS'
-#     feature_f_method: str = 'exact'
-#     feature_maxiter: int = 5
-#     feature_final_num: int = None
-#     feature_maxiter_float: int = 1
-#     grad_alpha: float = 0.1
-#     grad_beta: float = 0.1
-#     grad_N: int = 20
-#     grad_lr: float = 0.01
-#     grad_maxiter: int = 100
-#     grad_fit_coupling: bool = False
-#     verbose: bool = False
-
-
 class NSDMD:
     def __init__(
         self,
@@ -109,40 +79,18 @@ class NSDMD:
     def fit_opt(self, x, t, sr, initial_freq_guess=None):
         if self.verbose:
             print("Starting OPT-DMD...")
-        if self.bandpass is None:
-            f, p, w = opt_dmd_win(
-                x, t, self.opt_win, self.opt_stride, self.opt_rank, initial_freq_guess
-            )
-            self.freqs_ = f
-            self.phis_ = p
-            self.windows_ = w
-            self.offsets_ = (
-                t[self.windows_[:, 0]][:, None]
-                * np.ones((self.freqs_.shape[1]), dtype=int)[None, :]
-            )
-        else:
-            f, p, w = opt_dmd_with_bandpass(
-                x,
-                t,
-                sr,
-                self.opt_win,
-                self.opt_stride,
-                self.opt_rank,
-                self.bandpass,
-                self.bandpass_trim,
-                initial_freq_guess,
-                self.verbose,
-            )
-            self.freqs_ = f
-            self.phis_ = p
-            self.windows_ = w
-            self.offsets_ = (
-                t[self.bandpass_trim : -self.bandpass_trim][self.windows_[:, 0]][
-                    :, None
-                ]
-                * np.ones((self.freqs_.shape[1]), dtype=int)[None, :]
-            )
-
+            
+        opt_dmd_class = opt_dmd_windowed(
+            sr=sr,
+            w_len=self.opt_win,
+            stride=self.opt_stride,
+            rank=self.opt_rank,
+            bp_ranges=self.bandpass,
+            initial_guess=initial_freq_guess,
+            trim=self.bandpass_trim,
+            verbose=self.verbose
+        )
+        self.freqs_, self.phis_, self.windows_, self.offsets_ = opt_dmd_class.compute_opt_dmd(x, t)
         return self
 
     def set_opt_values(self, freqs, phis, windows, offsets):
@@ -298,116 +246,200 @@ class NSDMD:
 
 ################## OPT-DMD
 
-
-def opt_dmd_win(x, t, w_len, stride, rank, initial_freq_guess=None):
+class opt_dmd_windowed:
     """
-    Computes OPT-DMD for windows defined by the length and stride
-    Note : currently works with equally spaced time data
-
-    Parameters
+    Class for computing OPT-DMD for different windows
+    
+    Attributes
     ----------
-    x : 2 dimensional data matrix. 1st dimension is spatial, 2nd is time
-    t : times associated with each snapshot in x
+    sr : sampling rate
     w_len : window length of each run of opt-dmd
     stride : step of window
     rank : rank to run opt-dmd
-    initial_freq_guess : guess for first window in frequency
-
-    Returns
-    -------
-    freqs : frequencies of modes with shape (number of windows, rank)
-    phis : complex spatial modes with shape (number of windows, rank, number of channels)
-    windows : exact windows used, for testing purposes
-    """
-    windows = np.array(
-        [np.arange(i, i + w_len) for i in np.arange(0, x.shape[-1] - w_len + 1, stride)]
-    )
-    freqs = np.empty((len(windows), rank))
-    phis = np.empty((len(windows), rank, len(x)), dtype=complex)
-
-    for i, window in enumerate(windows):
-        x_temp = x[:, window]
-        t_temp = t[window]
-        t_temp -= t_temp[0]  # Forces the starting time to be 0
-
-        if i == 0:
-            if initial_freq_guess is None:
-                guess = None
-            else:
-                assert (
-                    len(initial_freq_guess) == rank
-                ), "Number of frequencies guessed isnt equal to the rank"
-                guess = 0.0 + 1j * 2 * np.pi * initial_freq_guess
-        else:
-            guess = 0.0 + 1j * 2 * np.pi * freqs[i - 1]  # Setting real part to be 0
-
-        dmd = optdmd.OptDMD(x_temp, t_temp, rank)
-        dmd.fit(verbose=False, eigs_guess=guess)
-
-        freqs[i] = np.array(dmd.eigs).imag / 2.0 / np.pi
-        phis[i] = dmd.modes.T
-
-    return (freqs, phis, windows)
-
-
-def opt_dmd_with_bandpass(
-    x, t, sr, w_len, stride, rank, bp_ranges, trim, initial_guess=None, verbose=False
-):
-    """
-    Runs opt_dmd_win for bandpassed regions
-
-    Parameters
-    ----------
-    x : data matrix
-    t : timepoints of x
-    sr : sampling rate
-    w_len : window length
-    stride : stride for opt_dmd_win
-    rank : rank of opt_dmd
     bp_ranges : list of bandpass ranges (e.g. [[1,4],[4,7],...])
-    trim : amount of data matrix to exclude after bandpassing
     initial_guess : list of initial guesses for frequencies, corresponding to bp_ranges
+    trim : amount of data matrix to exclude after bandpassing
     verbose : flag to say whether to show comments
-
-    Returns
+    
+    Methods
     -------
-    freqs_ : non-trivial freqs
-    phis_ : non-trivial phis
-    w : corresponding windows
+    compute_opt_dmd(x, t)
+        Computes OPT-DMD for chosen parameters
     """
-    bp_ranges = np.array(bp_ranges)
-    assert len(bp_ranges.shape) == 2, "Must be 2 dimensional"
-    assert bp_ranges.shape[1] == 2, "Second dimension needs to be of length 2"
-    if initial_guess is not None:
-        initial_guess = np.array(initial_guess)
-        assert len(bp_ranges) == len(
-            initial_guess
-        ), "Guess must be of same length as bp_ranges"
-        assert (
-            initial_guess.shape[1] == rank
-        ), "Guess must have the same number of modes as rank"
-
-    t = t.copy()[trim:-trim]
-    freqs = []
-    phis = []
-    for i, bp in enumerate(bp_ranges):
-        if verbose:
-            print("Starting bandpass freq: " + str(bp[0]) + " - " + str(bp[1]) + " Hz")
-
-        x_filt = _bandpass_x(x, sr, bp[0], bp[1], trim=trim)
-        if initial_guess is not None:
-            guess = _bandpass_guess(bp[0], bp[1], rank, initial_guess[i])
+    def __init__(
+        self,
+        sr,
+        w_len,
+        stride,
+        rank,
+        bp_ranges,
+        initial_guess,
+        trim,
+        verbose
+    ):
+        """
+        Initializes opt_dmd_windowed class
+        
+        Parameters
+        ----------
+        sr : sampling rate
+        w_len : window length of each run of opt-dmd
+        stride : step of window
+        rank : rank to run opt-dmd
+        bp_ranges : list of bandpass ranges (e.g. [[1,4],[4,7],...]) or None if no bandpassing
+        initial_guess : list of initial guesses for frequencies, corresponding to bp_ranges (or single initial guess)
+        trim : amount of data matrix to exclude after bandpassing
+        verbose : flag to say whether to show comments
+        """
+        self.sr = sr
+        self.w_len = w_len
+        self.stride = stride
+        self.rank = rank
+        self.bp_ranges = bp_ranges
+        self.initial_guess = initial_guess
+        self.trim = trim
+        self.verbose = verbose
+        
+    def compute_opt_dmd(self, x, t):
+        """
+        Wrapper to compute OPT-DMD with bandpassing or no bandpassing
+        Note : currently works with equally spaced time data
+        
+        Parameters
+        ----------
+        x : 2 dimensional data matrix. 1st dimension is spatial, 2nd is time
+        t : times associated with each snapshot in x
+        
+        Returns
+        -------
+        f : frequencies of modes with shape (number of windows, rank)
+        p : complex spatial modes with shape (number of windows, rank, number of channels)
+        w : exact windows used, for testing purposes
+        o : offsets for every window based on the frequencies
+        """
+        if self.bp_ranges is None:
+            f, p, w = self._opt_dmd_win(
+                x, 
+                t
+            )
+            o = (
+                t[w[:, 0]][:, None]
+                * np.ones((f.shape[1]), dtype=int)[None, :]
+            )
         else:
-            guess = _bandpass_guess(bp[0], bp[1], rank, initial_guess)
+            f, p, w = self._opt_dmd_with_bandpass(
+                x,
+                t
+            )
+            o = (
+                t[self.trim:-self.trim][w[:, 0]][
+                    :, None
+                ]
+                * np.ones((f.shape[1]), dtype=int)[None, :]
+            )
+            
+        return f, p, w, o
+        
+    def _opt_dmd_win(self, x, t, guess=None):
+        """
+        Computes OPT-DMD for windows defined by the length and stride
 
-        f, p, w = opt_dmd_win(x_filt, t, w_len, stride, rank, guess)
-        f, p = _bandpass_exclude(f, p, bp[0], bp[1])
+        Parameters
+        ----------
+        x : 2 dimensional data matrix. 1st dimension is spatial, 2nd is time
+        t : times associated with each snapshot in x
+        guess : frequency guess to overwrite attribute initial guess
 
-        freqs.append(f)
-        phis.append(p)
-    freqs_ = np.hstack(freqs)
-    phis_ = np.hstack(phis)
-    return (freqs_, phis_, w)
+        Returns
+        -------
+        freqs : frequencies of modes with shape (number of windows, rank)
+        phis : complex spatial modes with shape (number of windows, rank, number of channels)
+        windows : exact windows used, for testing purposes
+        """
+        windows = np.array(
+            [np.arange(i, i + self.w_len) for i in np.arange(0, x.shape[-1] - self.w_len + 1, self.stride)]
+        )
+        freqs = np.empty((len(windows), self.rank))
+        phis = np.empty((len(windows), self.rank, len(x)), dtype=complex)
+        
+        if guess is None:
+            initial_guess = self.initial_guess
+        else:
+            initial_guess = guess
+
+        for i, window in enumerate(windows):
+            x_temp = x[:, window]
+            t_temp = t[window]
+            t_temp -= t_temp[0]  # Forces the starting time to be 0
+
+            if i == 0:
+                if initial_guess is None:
+                    guess = None
+                else:
+                    assert (
+                        len(initial_guess) == self.rank
+                    ), "Number of frequencies guessed isnt equal to the rank"
+                    guess = 0.0 + 1j * 2 * np.pi * initial_guess
+            else:
+                guess = 0.0 + 1j * 2 * np.pi * freqs[i - 1]  # Setting real part to be 0
+
+            dmd = optdmd.OptDMD(x_temp, t_temp, self.rank)
+            dmd.fit(verbose=False, eigs_guess=guess)
+
+            freqs[i] = np.array(dmd.eigs).imag / 2.0 / np.pi
+            phis[i] = dmd.modes.T
+
+        return (freqs, phis, windows)
+
+
+    def _opt_dmd_with_bandpass(self, x, t):
+        """
+        Runs _opt_dmd_win for bandpassed regions
+
+        Parameters
+        ----------
+        x : data matrix
+        t : timepoints of x
+
+        Returns
+        -------
+        freqs_ : non-trivial freqs
+        phis_ : non-trivial phis
+        w : corresponding windows
+        """
+        bp_ranges = np.array(self.bp_ranges)
+        assert len(bp_ranges.shape) == 2, "Must be 2 dimensional"
+        assert bp_ranges.shape[1] == 2, "Second dimension needs to be of length 2"
+        if self.initial_guess is not None:
+            self.initial_guess = np.array(self.initial_guess)
+            assert len(bp_ranges) == len(
+                self.initial_guess
+            ), "Guess must be of same length as bp_ranges"
+            assert (
+                self.initial_guess.shape[1] == self.rank
+            ), "Guess must have the same number of modes as rank"
+
+        t = t.copy()[self.trim:-self.trim]
+        freqs = []
+        phis = []
+        for i, bp in enumerate(bp_ranges):
+            if self.verbose:
+                print("Starting bandpass freq: " + str(bp[0]) + " - " + str(bp[1]) + " Hz")
+
+            x_filt = _bandpass_x(x, self.sr, bp[0], bp[1], trim=self.trim)
+            if self.initial_guess is not None:
+                guess = _bandpass_guess(bp[0], bp[1], self.rank, self.initial_guess[i])
+            else:
+                guess = _bandpass_guess(bp[0], bp[1], self.rank, self.initial_guess)
+
+            f, p, w = self._opt_dmd_win(x_filt, t, guess)
+            f, p = _bandpass_exclude(f, p, bp[0], bp[1])
+
+            freqs.append(f)
+            phis.append(p)
+        freqs_ = np.hstack(freqs)
+        phis_ = np.hstack(phis)
+        return (freqs_, phis_, w)
 
 
 def _bandpass_x(x, sr, bp_low, bp_high, bp_filter='chebyshev', trim=None):
@@ -807,25 +839,25 @@ class reduction:
     
     Attributes
     ----------
-    self.N : amount of averaging to do on global modulation f
-    self.sr : sampling rate of dataset,
-    self.bands : bands to evaluate feature selection over,
-    self.band_trims : amount of data to throw away after bandpassing
-    self.final_num : end number of modes to stop computing feature selection
-    self.seq_method : method of sequential feature selection
-    self.floating : bool indicating whether to include floating methods in sequential feature selection
-    self.f_method : method of exact or gradient descent
-    self.maxiter_float : parameter to  stop sequential selector from repeating too many times
-    self.exact_var_thresh : threshold for exact method
-    self.grad_alpha : alpha for gradient descent
-    self.grad_beta : beta for gradient descent
-    self.grad_lr : lr for gradient descent
-    self.grad_momentum : momentum for gradient descent
-    self.grad_init_lowpass : value of initial guess lowpass (or None if no low pass)
-    self.maxiter : how many runs for quick gradient descent
-    self.grad_fit_coupling : whether to fit coupling for gradient descent
-    self.grad_delay : coupling delay for gradient descent
-    self.verbose : flag to show comments as it's processing
+    N : amount of averaging to do on global modulation f
+    sr : sampling rate of dataset,
+    bands : bands to evaluate feature selection over,
+    band_trims : amount of data to throw away after bandpassing
+    final_num : end number of modes to stop computing feature selection
+    seq_method : method of sequential feature selection
+    floating : bool indicating whether to include floating methods in sequential feature selection
+    f_method : method of exact or gradient descent
+    maxiter_float : parameter to  stop sequential selector from repeating too many times
+    exact_var_thresh : threshold for exact method
+    grad_alpha : alpha for gradient descent
+    grad_beta : beta for gradient descent
+    grad_lr : lr for gradient descent
+    grad_momentum : momentum for gradient descent
+    grad_init_lowpass : value of initial guess lowpass (or None if no low pass)
+    maxiter : how many runs for quick gradient descent
+    grad_fit_coupling : whether to fit coupling for gradient descent
+    grad_delay : coupling delay for gradient descent
+    verbose : flag to show comments as it's processing
     
     Methods
     -------
