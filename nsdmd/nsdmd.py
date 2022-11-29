@@ -34,6 +34,7 @@ class NSDMD:
         grad_fit_coupling=False,
         grad_init_lowpass=2,
         verbose=False,
+        filter_options={}
     ):
         self.opt_win = opt_win
         self.opt_stride = opt_stride
@@ -63,6 +64,15 @@ class NSDMD:
         self.grad_fit_coupling = grad_fit_coupling
         self.grad_init_lowpass = grad_init_lowpass
         self.verbose = verbose
+        self.filter_options = {
+            'butter_order':5,
+            'cheb_order':5,
+            'cheb_amp':1
+        }
+        filter_keys = np.array(list(self.filter_options.keys()))
+        for key in filter_options:
+            assert np.any(key==filter_keys), 'Filter option not available'
+            self.filter_options[key] = filter_options[key]
 
     def fit(self, x, t, sr, initial_freq_guess=None):
         self.fit_opt(x, t, sr, initial_freq_guess=initial_freq_guess)
@@ -88,7 +98,8 @@ class NSDMD:
             bp_ranges=self.bandpass,
             initial_guess=initial_freq_guess,
             trim=self.bandpass_trim,
-            verbose=self.verbose
+            verbose=self.verbose,
+            filter_options=self.filter_options
         )
         self.freqs_, self.phis_, self.windows_, self.offsets_ = opt_dmd_class.compute_opt_dmd(x, t)
         return self
@@ -124,7 +135,12 @@ class NSDMD:
 
         if self.feature_init is not None:
             idx_feat_init = feature_init_remove(
-                soln, np.mean(freqs, axis=1), x, sr, thresh=self.feature_init
+                soln, 
+                np.mean(freqs, axis=1), 
+                x, 
+                sr, 
+                thresh=self.feature_init,
+                filter_options=self.filter_options
             )
             idx_init = idx_init[idx_feat_init]
             soln = soln[idx_feat_init]
@@ -163,7 +179,8 @@ class NSDMD:
             maxiter=self.feature_maxiter,
             grad_fit_coupling=self.grad_fit_coupling,
             grad_delay=delay,
-            verbose=self.verbose
+            verbose=self.verbose,
+            filter_options=self.filter_options
         )
 
         idxs, self.errors_, self.num_modes_ = redux_class.feature_selector(
@@ -260,6 +277,7 @@ class opt_dmd_windowed:
     initial_guess : list of initial guesses for frequencies, corresponding to bp_ranges
     trim : amount of data matrix to exclude after bandpassing
     verbose : flag to say whether to show comments
+    filter_options : options for how to filter the data
     
     Methods
     -------
@@ -275,7 +293,8 @@ class opt_dmd_windowed:
         bp_ranges,
         initial_guess,
         trim,
-        verbose
+        verbose,
+        filter_options={}
     ):
         """
         Initializes opt_dmd_windowed class
@@ -290,6 +309,7 @@ class opt_dmd_windowed:
         initial_guess : list of initial guesses for frequencies, corresponding to bp_ranges (or single initial guess)
         trim : amount of data matrix to exclude after bandpassing
         verbose : flag to say whether to show comments
+        filter_options : options for how to filter the data
         """
         self.sr = sr
         self.w_len = w_len
@@ -299,6 +319,7 @@ class opt_dmd_windowed:
         self.initial_guess = initial_guess
         self.trim = trim
         self.verbose = verbose
+        self.filter_options = filter_options
         
     def compute_opt_dmd(self, x, t):
         """
@@ -426,7 +447,7 @@ class opt_dmd_windowed:
             if self.verbose:
                 print("Starting bandpass freq: " + str(bp[0]) + " - " + str(bp[1]) + " Hz")
 
-            x_filt = _bandpass_x(x, self.sr, bp[0], bp[1], trim=self.trim)
+            x_filt = _bandpass_x(x, self.sr, bp[0], bp[1], trim=self.trim, filter_options=self.filter_options)
             if self.initial_guess is not None:
                 guess = _bandpass_guess(bp[0], bp[1], self.rank, self.initial_guess[i])
             else:
@@ -442,7 +463,7 @@ class opt_dmd_windowed:
         return (freqs_, phis_, w)
 
 
-def _bandpass_x(x, sr, bp_low, bp_high, bp_filter='chebyshev', trim=None):
+def _bandpass_x(x, sr, bp_low, bp_high, bp_filter='chebyshev', trim=None, filter_options={}):
     """
     Bandpasses data to specified freq range
 
@@ -455,18 +476,43 @@ def _bandpass_x(x, sr, bp_low, bp_high, bp_filter='chebyshev', trim=None):
     bp_filter : type of filter to use to bandpass the data.
         Can either be 'chebyshev' or 'butter'
     trim : how much of data to trim after bandpassing
+    filter_options : options for filtering the data
 
     Returns
     -------
     x_filt : filtered data
     """
     assert bp_filter=='chebyshev' or bp_filter=='butter', 'wrong bandpass filter type'
-    if bp_filter=='butter':   
-        temp = utils.butter_pass_filter(x.copy(), bp_low, int(sr), "high")
-        temp2 = utils.butter_pass_filter(temp, bp_high, int(sr), "low")
+    
+    filter_keys = np.array(list(filter_options.keys()))
+    if bp_filter=='butter':
+        if np.any(filter_keys=='butter_order'):
+            temp = utils.butter_pass_filter(x.copy(), bp_low, int(sr), "high", order=filter_options['butter_order'])
+            temp2 = utils.butter_pass_filter(temp, bp_high, int(sr), "low", order=filter_options['butter_order'])
+        else:
+            temp = utils.butter_pass_filter(x.copy(), bp_low, int(sr), "high")
+            temp2 = utils.butter_pass_filter(temp, bp_high, int(sr), "low")
     else:
-        temp = utils.cheb_pass_filter(x.copy(), bp_low, int(sr), "high")
-        temp2 = utils.cheb_pass_filter(temp, bp_high, int(sr), "low")
+        if np.any(filter_keys=='cheb_order') and np.any(filter_keys=='cheb_amp'):
+            temp = utils.cheb_pass_filter(
+                x.copy(),
+                bp_low, 
+                int(sr), 
+                "high", 
+                order=filter_options['cheb_order'],
+                db_amp=filter_options['cheb_amp']
+            )
+            temp2 = utils.cheb_pass_filter(
+                temp, 
+                bp_high,
+                int(sr), 
+                "low",
+                order=filter_options['cheb_order'],
+                db_amp=filter_options['cheb_amp']
+            )
+        else:
+            temp = utils.cheb_pass_filter(x.copy(), bp_low, int(sr), "high")
+            temp2 = utils.cheb_pass_filter(temp, bp_high, int(sr), "low")
     # x_filt = temp2 / np.std(temp2, axis=-1)[:, None] # Seems to mess things up??
     x_filt = temp2
 
@@ -730,7 +776,7 @@ def get_red_init(group_idx, num_windows, min_group_size=1):
     return idx_red
 
 
-def feature_init_remove(soln, freqs, x, sr, thresh=0.2):
+def feature_init_remove(soln, freqs, x, sr, thresh=0.2, filter_options={}):
     """
     Initially keeps some number of solutions based on simple reconstruction error
     Assumes no global modulation
@@ -743,6 +789,7 @@ def feature_init_remove(soln, freqs, x, sr, thresh=0.2):
     sr : sampling rate
     threh : either integer with value >= 1 and < num modes (this keeps that many modes with best reconstruction)
         or float with value between 0 and 1 (this keeps all modes above this cosine distance)
+    filter_options : options for filtering the data
 
     Returns
     -------
@@ -755,12 +802,12 @@ def feature_init_remove(soln, freqs, x, sr, thresh=0.2):
     errors = np.empty((len(soln)))
     for i in range(len(soln)):
         soln_sub = soln[[i]]
-        x_sub = _bandpass_x(x, sr, np.max([freqs[i] - 1, 0.1]), freqs[i] + 1)
+        x_sub = _bandpass_x(x, sr, np.max([freqs[i] - 1, 0.1]), freqs[i] + 1, filter_options=filter_options)
 
         f_sub = grad_f_amp(f, soln_sub, x_sub)
         # f_sub = np.array([f[i]])
         x_rec = get_reconstruction(soln_sub, f_sub)
-        errors[i] = get_reconstruction_error(x_rec, x_sub)
+        errors[i] = get_reconstruction_error(x_rec, x_sub, filter_options=filter_options)
 
     if thresh > 0 and thresh < 1:
         idxs = np.argwhere(errors > thresh)[:, 0]
@@ -858,6 +905,7 @@ class reduction:
     grad_fit_coupling : whether to fit coupling for gradient descent
     grad_delay : coupling delay for gradient descent
     verbose : flag to show comments as it's processing
+    filter_options : options for filtering data
     
     Methods
     -------
@@ -883,7 +931,8 @@ class reduction:
         maxiter=5,
         grad_fit_coupling=False,
         grad_delay=None,
-        verbose=True
+        verbose=True,
+        filter_options={}
     ):
         """
         Initializes reduction class
@@ -908,6 +957,7 @@ class reduction:
         grad_fit_coupling : whether to fit coupling for gradient descent
         grad_delay : coupling delay for gradient descent
         verbose : flag to show comments as it's processing
+        filter_options : options for filtering data
         """
         self.N=N
         self.sr=sr
@@ -927,6 +977,7 @@ class reduction:
         self.grad_fit_coupling=grad_fit_coupling
         self.grad_delay=grad_delay
         self.verbose=verbose
+        self.filter_options=filter_options
         
         if self.seq_method=='SBS' or self.seq_method=='SFS':
             self.floating = False
@@ -1033,7 +1084,14 @@ class reduction:
             f_hat = exact_f_from_Bf(B, f, self.N, var_thresh=self.exact_var_thresh)
 
         x_rec = get_reconstruction(soln, f_hat)
-        total_error = [get_reconstruction_error(x, x_rec, self.sr, self.bands, self.band_trims)]
+        total_error = [get_reconstruction_error(
+            x,
+            x_rec, 
+            self.sr,
+            self.bands, 
+            self.band_trims,
+            filter_options=self.filter_options
+        )]
 
         idx = np.arange(soln.shape[0])
         idx_excluded = []
@@ -1081,7 +1139,14 @@ class reduction:
                     f_hat = exact_f_from_Bf(B_sub, f_sub, self.N, var_thresh=self.exact_var_thresh)
 
                 x_rec = get_reconstruction(soln[idx_sub], f_hat)
-                error[j] = get_reconstruction_error(x, x_rec, self.sr, self.bands, self.band_trims)
+                error[j] = get_reconstruction_error(
+                    x, 
+                    x_rec,
+                    self.sr, 
+                    self.bands,
+                    self.band_trims,
+                    filter_options=self.filter_options
+                )
 
             total_error.append(np.max(error))
             idx_excluded.append(idx[np.argmax(error)])
@@ -1122,7 +1187,14 @@ class reduction:
                         )
 
                     x_rec = get_reconstruction(soln[idx_sub], f_hat)
-                    error[j] = get_reconstruction_error(x, x_rec, self.sr, self.bands, self.band_trims)
+                    error[j] = get_reconstruction_error(
+                        x, 
+                        x_rec,
+                        self.sr,
+                        self.bands, 
+                        self.band_trims,
+                        filter_options=self.filter_options
+                    )
 
                 if np.max(error) > total_error[-1]:
                     total_error.append(np.max(error))
@@ -1215,7 +1287,14 @@ class reduction:
                     f_hat = exact_f_from_Bf(B_sub, f_sub, self.N, var_thresh=self.exact_var_thresh)
 
                 x_rec = get_reconstruction(soln[idx_sub], f_hat)
-                error[j] = get_reconstruction_error(x, x_rec, self.sr, self.bands, self.band_trims)
+                error[j] = get_reconstruction_error(
+                    x,
+                    x_rec,
+                    self.sr, 
+                    self.bands, 
+                    self.band_trims,
+                    filter_options=self.filter_options
+                )
 
             total_error.append(np.max(error))
             idx = idx + [idx_used[np.argmax(error)]]
@@ -1250,7 +1329,14 @@ class reduction:
                         )
 
                     x_rec = get_reconstruction(soln[idx_sub], f_hat)
-                    error[j] = get_reconstruction_error(x, x_rec, self.sr, self.bands, self.band_trims)
+                    error[j] = get_reconstruction_error(
+                        x, 
+                        x_rec, 
+                        self.sr,
+                        self.bands,
+                        self.band_trims,
+                        filter_options=self.filter_options
+                    )
 
                 if np.max(error) > total_error[-1]:
                     total_error.append(np.max(error))
@@ -1516,7 +1602,7 @@ def get_reconstruction(soln, f):
     return x_rec
 
 
-def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None):
+def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None, filter_options={}):
     """
     Calculates the reconstruction error from the original and reconstructed data matricies
 
@@ -1527,6 +1613,7 @@ def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None):
     sr : sampling rate of data
     bands : if list of bands, will calculate the cosine distance for each individual band and take the mean
     trim : amount of data to trim off after bandpassing the data
+    filter_options : options for filtering the data
 
     Returns
     -------
@@ -1542,8 +1629,24 @@ def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None):
         
         error_b = np.empty(len(bands))
         for i,bp in enumerate(bands):
-            x_true_b = _bandpass_x(x_true.copy(), sr, bp[0], bp[1], bp_filter='chebyshev', trim=None)
-            x_rec_b = _bandpass_x(x_rec.copy(), sr, bp[0], bp[1], bp_filter='chebyshev', trim=None)
+            x_true_b = _bandpass_x(
+                x_true.copy(),
+                sr, 
+                bp[0], 
+                bp[1], 
+                bp_filter='chebyshev', 
+                trim=None,
+                filter_options=filter_options
+            )
+            x_rec_b = _bandpass_x(
+                x_rec.copy(), 
+                sr, 
+                bp[0],
+                bp[1], 
+                bp_filter='chebyshev',
+                trim=None,
+                filter_options=filter_options
+            )
             error_b[i] = utils.cos_dist(x_rec_b.reshape((-1)), x_true_b.reshape((-1)))
         error = np.mean(error_b)
     return error
