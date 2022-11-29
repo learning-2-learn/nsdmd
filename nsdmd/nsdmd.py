@@ -201,20 +201,20 @@ class NSDMD:
         self.delay_hat_ = np.array(
             np.round(p * sr / (2 * np.pi * self.freq_mean_[:, None])), dtype=int
         )
-
-        f_hat = grad_f(
-            x,
-            soln,
-            self.grad_alpha,
-            self.grad_beta,
-            self.grad_N,
-            self.grad_lr,
-            self.grad_momentum,
-            self.grad_maxiter,
-            self.grad_init_lowpass,
-            self.grad_fit_coupling,
-            self.delay_hat_,
+        
+        grad_class = gradient_descent(
+            sr=sr,
+            alpha=self.grad_alpha, 
+            beta=self.grad_beta, 
+            N=self.grad_N, 
+            lr=self.grad_lr, 
+            momentum=self.grad_momentum, 
+            maxiter=self.grad_maxiter, 
+            init_lowpass=self.grad_init_lowpass, 
+            fit_coupling=self.grad_fit_coupling
         )
+        f_hat = grad_class.grad_f(x, soln, self.delay_hat_)
+        
         self.f_hat_ = grad_f_amp(f_hat, soln, x)
         return self
 
@@ -1014,19 +1014,19 @@ class reduction:
                 + str(self.final_num)
             )
         if self.f_method == "grad":
-            f_hat = grad_f(
-                x,
-                soln,
-                self.grad_alpha,
-                self.grad_beta,
-                self.N,
-                self.grad_lr,
-                self.grad_momentum,
-                self.maxiter,
-                self.grad_init_lowpass,
-                self.grad_fit_coupling,
-                self.grad_delay,
+            grad_class = gradient_descent(
+                sr=self.sr,
+                alpha=self.grad_alpha, 
+                beta=self.grad_beta, 
+                N=self.N, 
+                lr=self.grad_lr, 
+                momentum=self.grad_momentum, 
+                maxiter=self.maxiter, 
+                init_lowpass=self.grad_init_lowpass, 
+                fit_coupling=self.grad_fit_coupling
             )
+            f_hat = grad_class.grad_f(x, soln, self.grad_delay)
+        
             f_hat = grad_f_amp(f_hat, soln, x)
         else:
             B, f = exact_Bf(x, soln)
@@ -1061,19 +1061,19 @@ class reduction:
             for j, r in enumerate(idx):
                 idx_sub = idx[idx != r]
                 if self.f_method == "grad":
-                    f_hat = grad_f(
-                        x,
-                        soln[idx_sub],
-                        self.grad_alpha,
-                        self.grad_beta,
-                        self.N,
-                        self.grad_lr,
-                        self.grad_momentum,
-                        self.maxiter,
-                        self.grad_init_lowpass,
-                        self.grad_fit_coupling,
-                        self.grad_delay,
+                    grad_class = gradient_descent(
+                        sr=self.sr,
+                        alpha=self.grad_alpha, 
+                        beta=self.grad_beta, 
+                        N=self.N, 
+                        lr=self.grad_lr, 
+                        momentum=self.grad_momentum, 
+                        maxiter=self.maxiter, 
+                        init_lowpass=self.grad_init_lowpass, 
+                        fit_coupling=self.grad_fit_coupling
                     )
+                    f_hat = grad_class.grad_f(x, soln[idx_sub], self.grad_delay)
+                    
                     f_hat = grad_f_amp(f_hat, soln[idx_sub], x)
                 else:
                     f_sub = f[idx_sub]
@@ -1100,19 +1100,19 @@ class reduction:
                 for j, r in enumerate(np.array(idx_excluded)):
                     idx_sub = np.array(list(idx) + [r])
                     if self.f_method == "grad":
-                        f_hat = grad_f(
-                            x,
-                            soln[idx_sub],
-                            self.grad_alpha,
-                            self.grad_beta,
-                            self.N,
-                            self.grad_lr,
-                            self.grad_momentum,
-                            self.maxiter,
-                            self.grad_init_lowpass,
-                            self.grad_fit_coupling,
-                            self.grad_delay,
+                        grad_class = gradient_descent(
+                            sr=self.sr,
+                            alpha=self.grad_alpha, 
+                            beta=self.grad_beta, 
+                            N=self.N, 
+                            lr=self.grad_lr, 
+                            momentum=self.grad_momentum, 
+                            maxiter=self.maxiter, 
+                            init_lowpass=self.grad_init_lowpass, 
+                            fit_coupling=self.grad_fit_coupling
                         )
+                        f_hat = grad_class.grad_f(x, soln[idx_sub], self.grad_delay)
+                        
                         f_hat = grad_f_amp(f_hat, soln[idx_sub], x)
                     else:
                         f_sub = f[idx_sub]
@@ -1196,19 +1196,19 @@ class reduction:
             for j, r in enumerate(idx_used):
                 idx_sub = np.array(idx + [r])
                 if self.f_method == "grad":
-                    f_hat = grad_f(
-                        x,
-                        soln[idx_sub],
-                        self.grad_alpha,
-                        self.grad_beta,
-                        self.N,
-                        self.grad_lr,
-                        self.grad_momentum,
-                        self.maxiter,
-                        self.grad_init_lowpass,
-                        self.grad_fit_coupling,
-                        self.grad_delay,
+                    grad_class = gradient_descent(
+                        sr=self.sr,
+                        alpha=self.grad_alpha, 
+                        beta=self.grad_beta, 
+                        N=self.N, 
+                        lr=self.grad_lr, 
+                        momentum=self.grad_momentum, 
+                        maxiter=self.maxiter, 
+                        init_lowpass=self.grad_init_lowpass, 
+                        fit_coupling=self.grad_fit_coupling
                     )
+                    f_hat = grad_class.grad_f(x, soln[idx_sub], self.grad_delay)
+                    
                     f_hat = grad_f_amp(f_hat, soln[idx_sub], x)
                 else:
                     B_sub, f_sub = exact_Bf(x, soln[idx_sub])
@@ -1229,19 +1229,19 @@ class reduction:
                 for j, r in enumerate(np.array(idx)):
                     idx_sub = np.array(idx)[np.array(idx) != r]
                     if self.f_method == "grad":
-                        f_hat = grad_f(
-                            x,
-                            soln[idx_sub],
-                            self.grad_alpha,
-                            self.grad_beta,
-                            self.N,
-                            self.grad_lr,
-                            self.grad_momentum,
-                            self.maxiter,
-                            self.grad_init_lowpass,
-                            self.grad_fit_coupling,
-                            self.grad_delay,
+                        grad_class = gradient_descent(
+                            sr=self.sr,
+                            alpha=self.grad_alpha, 
+                            beta=self.grad_beta, 
+                            N=self.N, 
+                            lr=self.grad_lr, 
+                            momentum=self.grad_momentum, 
+                            maxiter=self.maxiter, 
+                            init_lowpass=self.grad_init_lowpass, 
+                            fit_coupling=self.grad_fit_coupling
                         )
+                        f_hat = grad_class.grad_f(x, soln[idx_sub], self.grad_delay)
+                        
                         f_hat = grad_f_amp(f_hat, soln[idx_sub], x)
                     else:
                         B_sub, f_sub = exact_Bf(x, soln[idx_sub])
@@ -1291,93 +1291,13 @@ def guess_best_fit_idx(num_modes, errors, alpha=0.0000001):
 
 ###################### Gradient Descent
 
-
-def grad_f_init(x, soln, beta, low_pass=None):
+class gradient_descent:
     """
-    Finds the initial guess for f based on the gradient descent method
-
-    Parameters
-    ----------
-    x : original data matrix with shape (number of channels, time)
-    soln : solutions with shape (number of modes, number of channels, time)
-    beta : array indicating strength of temporal smoothing
-    low_pass : either None (indicating no lowpass of initial guess) or a number greater than 0 indicating
-               at what value to low pass filter the initial guess.
-
-    Returns
-    -------
-    f_init : intial guess for f
-    """
-    f_init = np.empty((soln.shape[0], soln.shape[-1]))
-    for r in range(soln.shape[0]):
-        for t in range(soln.shape[2]):
-            top = soln[r, :, t] @ x[:, t]
-            bot = ((soln[r, :, t] @ soln[r, :, t])) + np.sum(beta)
-            f_init[r, t] = top / bot
+    Class for computing the gradient descent to find f(t)
     
-    if low_pass is not None:
-        assert low_pass>0, 'Initial low_pass is not greater than 0'
-        # Mirrors data before low pass filtering data
-        f_init_long = np.empty((f_init.shape[0], 3*f_init.shape[1]))
-        f_init_long[:,:f_init.shape[1]] = f_init[:,::-1]
-        f_init_long[:,f_init.shape[1]:2*f_init.shape[1]] = f_init[:,::1]
-        f_init_long[:,2*f_init.shape[1]:] = f_init[:,::-1]
-        f_init = utils.butter_pass_filter(f_init_long, low_pass, 1000, 'low')[:,f_init.shape[1]:2*f_init.shape[1]]
-        f_init = grad_f_amp(f_init, soln, x)
-            
-    return f_init
-
-
-def grad_f_grad_loss(f, x, soln, alpha, beta, N):
-    """
-    Finds the gradient of the loss function in the gradient descent method
-
-    Parameters
+    Attributes
     ----------
-    f : current guess of f with shape (number of modes, time) OR (number of modes, number of channels, time)
-    x : original data with shape (number of channels, time)
-    soln : solutions with shape (number of modes, number of channels, time)
-    alpha : number indicating strength of l1 regularization
-    beta : array of length 2N+1 indicating strength of temporal smoothing
-        reflection is used to mitigate boundary effects
-    N : number of timepoints to smooth over
-
-    Returns
-    -------
-    dLdf : gradient of loss function
-    """
-    if len(f.shape) == 3:
-        Y = np.einsum("ijk,ijk->jk", soln, f)
-        f_mean = np.mean(f, axis=1)
-    else:
-        Y = np.einsum("ijk,ik->jk", soln, f)
-        f_mean = f
-    Y2 = Y - x
-    l2_term = np.einsum("ijk,jk->ik", soln, Y2)
-
-    alpha_term = np.ones((f_mean.shape)) * alpha
-    alpha_term[f_mean < 0] = -alpha_term[f_mean < 0]
-        
-    beta_term = f_mean * np.sum(beta)
-    f_mean_ex = np.empty((f_mean.shape[0], f_mean.shape[1]+2*N))
-    f_mean_ex[:,:N] = f_mean[:,N:0:-1]
-    f_mean_ex[:,N:-N] = f_mean
-    f_mean_ex[:,-N:] = f_mean[:,-1:-N-1:-1]
-    
-    for i in range(len(beta_term)):
-        beta_term[i] = beta_term[i] - np.convolve(beta, f_mean_ex[i], mode='valid')
-
-    dLdf = l2_term + alpha_term + beta_term
-    return dLdf
-
-def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, init_lowpass=None, fit_coupling=False, t_delay=None):
-    """
-    Performs gradient descent to approximate f
-
-    Parameters
-    ----------
-    x : original data matrix with shape (number of channels, time)
-    soln : solutions with shape (number of modes, number of channels, time)
+    sr : sampling rate of data
     alpha : number indicating strength of l1 regularization
     beta : number or array with length 2N+1 indicating strength of temporal smoothing
         if single number, beta will turn into array with length 2N+1
@@ -1387,54 +1307,162 @@ def grad_f(x, soln, alpha, beta, N, lr, momentum, maxiter, init_lowpass=None, fi
     maxiter : total number of iterations
     init_lowpass : value of initial guess lowpass (or None if no low pass)
     fit_coupling : flag telling whether or not to fit time delays with individual channels
-    t_delay : time delays of each channel with shape (number of modes, number of channels)
-
-    Returns
-    -------
-    f : approximation of global modulation f
-    """
-    if not (
-        type(beta) == np.float64
-        or type(beta) == np.int64
-        or type(beta) == float
-        or type(beta) == int
-    ):
-        assert len(beta) == 2*N+1, "Length of beta term not correct"
-    else:
-        beta = np.ones(2*N+1) * beta
     
-    f = grad_f_init(x, soln, beta, init_lowpass)
-    f[f < 0] = 0
-    if fit_coupling:
-        idx = t_delay[:, :, None] + np.arange(f.shape[1])[None, None, :]
-        idx[idx < 0] = 0
-        idx[idx >= f.shape[1]] = f.shape[1] - 1
-        f_3D = np.empty((soln.shape))
+    Methods
+    -------
+    grad_f_init(x, soln)
+        Finds the initial guess for f based on the gradient descent method
+    grad_f(x, soln, t_delay=None)
+        Performs gradient descent to approximate f
+    """
+    def __init__(
+        self,
+        sr,
+        alpha, 
+        beta, 
+        N, 
+        lr, 
+        momentum, 
+        maxiter, 
+        init_lowpass=None, 
+        fit_coupling=False
+    ):
+        self.sr = sr
+        self.alpha = alpha
+        self.beta = beta
+        self.N = N
+        self.lr = lr
+        self.momentum = momentum
+        self.maxiter = maxiter
+        self.init_lowpass = init_lowpass
+        self.fit_coupling = fit_coupling
+        
+    def grad_f_init(self, x, soln):
+        """
+        Finds the initial guess for f based on the gradient descent method
 
-    dLdf_old = 0
-    for k in range(maxiter):
-        if fit_coupling:
+        Parameters
+        ----------
+        x : original data matrix with shape (number of channels, time)
+        soln : solutions with shape (number of modes, number of channels, time)
+
+        Returns
+        -------
+        f_init : intial guess for f
+        """
+        f_init = np.empty((soln.shape[0], soln.shape[-1]))
+        for r in range(soln.shape[0]):
+            for t in range(soln.shape[2]):
+                top = soln[r, :, t] @ x[:, t]
+                bot = ((soln[r, :, t] @ soln[r, :, t])) + np.sum(self.beta)
+                f_init[r, t] = top / bot
+
+        if self.init_lowpass is not None:
+            assert self.init_lowpass>0, 'Initial low_pass is not greater than 0'
+            # Mirrors data before low pass filtering data
+            f_init_long = np.empty((f_init.shape[0], 3*f_init.shape[1]))
+            f_init_long[:,:f_init.shape[1]] = f_init[:,::-1]
+            f_init_long[:,f_init.shape[1]:2*f_init.shape[1]] = f_init[:,::1]
+            f_init_long[:,2*f_init.shape[1]:] = f_init[:,::-1]
+            f_init = utils.butter_pass_filter(f_init_long, self.init_lowpass, self.sr, 'low')[:,f_init.shape[1]:2*f_init.shape[1]]
+            f_init = grad_f_amp(f_init, soln, x)
+
+        return f_init
+
+    def _grad_f_grad_loss(self, f, x, soln):
+        """
+        Finds the gradient of the loss function in the gradient descent method
+
+        Parameters
+        ----------
+        f : current guess of f with shape (number of modes, time) OR (number of modes, number of channels, time)
+        x : original data with shape (number of channels, time)
+        soln : solutions with shape (number of modes, number of channels, time)
+
+        Returns
+        -------
+        dLdf : gradient of loss function
+        """
+        if len(f.shape) == 3:
+            Y = np.einsum("ijk,ijk->jk", soln, f)
+            f_mean = np.mean(f, axis=1)
+        else:
+            Y = np.einsum("ijk,ik->jk", soln, f)
+            f_mean = f
+        Y2 = Y - x
+        l2_term = np.einsum("ijk,jk->ik", soln, Y2)
+
+        alpha_term = np.ones((f_mean.shape)) * self.alpha
+        alpha_term[f_mean < 0] = -alpha_term[f_mean < 0]
+
+        beta_term = f_mean * np.sum(self.beta)
+        f_mean_ex = np.empty((f_mean.shape[0], f_mean.shape[1]+2*self.N))
+        f_mean_ex[:,:self.N] = f_mean[:,self.N:0:-1]
+        f_mean_ex[:,self.N:-self.N] = f_mean
+        f_mean_ex[:,-self.N:] = f_mean[:,-1:-self.N-1:-1]
+
+        for i in range(len(beta_term)):
+            beta_term[i] = beta_term[i] - np.convolve(self.beta, f_mean_ex[i], mode='valid')
+
+        dLdf = l2_term + alpha_term + beta_term
+        return dLdf
+
+    def grad_f(self, x, soln, t_delay=None):
+        """
+        Performs gradient descent to approximate f
+
+        Parameters
+        ----------
+        x : original data matrix with shape (number of channels, time)
+        soln : solutions with shape (number of modes, number of channels, time)
+        t_delay : time delays of each channel with shape (number of modes, number of channels)
+
+        Returns
+        -------
+        f : approximation of global modulation f
+        """
+        if not (
+            type(self.beta) == np.float64
+            or type(self.beta) == np.int64
+            or type(self.beta) == float
+            or type(self.beta) == int
+        ):
+            assert len(self.beta) == 2*self.N+1, "Length of beta term not correct"
+        else:
+            self.beta = np.ones(2*self.N+1) * self.beta
+
+        f = self.grad_f_init(x, soln)
+        f[f < 0] = 0
+        if self.fit_coupling:
+            idx = t_delay[:, :, None] + np.arange(f.shape[1])[None, None, :]
+            idx[idx < 0] = 0
+            idx[idx >= f.shape[1]] = f.shape[1] - 1
+            f_3D = np.empty((soln.shape))
+
+        dLdf_old = 0
+        for k in range(self.maxiter):
+            if self.fit_coupling:
+                for i in range(t_delay.shape[0]):
+                    for j in range(t_delay.shape[1]):
+                        f_3D[i, j] = f[i, idx[i, j]]
+                dLdf = self._grad_f_grad_loss(f_3D, x, soln)
+            else:
+                dLdf = self._grad_f_grad_loss(f, x, soln)
+
+            f = f - self.lr * (dLdf + self.momentum * dLdf_old)
+            f[f < 0] = 0
+            f[:, self.N:-self.N] = utils.moving_average_dim(f, 2 * self.N + 1, -1)
+            f[:, :self.N] = np.mean(f[:, :self.N], axis=-1)[:, None]
+            f[:, -self.N:] = np.mean(f[:, -self.N:], axis=-1)[:, None]
+            dLdf_old = dLdf
+
+        if self.fit_coupling:
             for i in range(t_delay.shape[0]):
                 for j in range(t_delay.shape[1]):
                     f_3D[i, j] = f[i, idx[i, j]]
-            dLdf = grad_f_grad_loss(f_3D, x, soln, alpha, beta, N)
+            return f_3D
         else:
-            dLdf = grad_f_grad_loss(f, x, soln, alpha, beta, N)
-
-        f = f - lr * (dLdf + momentum * dLdf_old)
-        f[f < 0] = 0
-        f[:, N:-N] = utils.moving_average_dim(f, 2 * N + 1, -1)
-        f[:, :N] = np.mean(f[:, :N], axis=-1)[:, None]
-        f[:, -N:] = np.mean(f[:, -N:], axis=-1)[:, None]
-        dLdf_old = dLdf
-        
-    if fit_coupling:
-        for i in range(t_delay.shape[0]):
-            for j in range(t_delay.shape[1]):
-                f_3D[i, j] = f[i, idx[i, j]]
-        return f_3D
-    else:
-        return f
+            return f
 
 
 def grad_f_amp(f, soln, x):
