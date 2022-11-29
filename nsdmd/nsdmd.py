@@ -198,6 +198,7 @@ class NSDMD:
             delay = None
             
         redux_class = reduction(
+            N=self.feature_N,
             sr=sr,
             bands=self.bandpass,
             band_trims=self.bandpass_trim,
@@ -219,8 +220,7 @@ class NSDMD:
 
         idxs, self.errors_, self.num_modes_ = redux_class.feature_selector(
             soln,
-            x,
-            self.feature_N
+            x
         )
 
         self.idx_red_ = [idx_init[idx] for idx in idxs]
@@ -807,6 +807,7 @@ class reduction:
     
     Attributes
     ----------
+    self.N : amount of averaging to do on global modulation f
     self.sr : sampling rate of dataset,
     self.bands : bands to evaluate feature selection over,
     self.band_trims : amount of data to throw away after bandpassing
@@ -833,6 +834,7 @@ class reduction:
     """
     def __init__(
         self,
+        N=1,
         sr=1000,
         bands=None,
         band_trims=None,
@@ -856,6 +858,7 @@ class reduction:
         
         Parameters
         ----------
+        N : amount of averaging to do on global modulation f
         sr : sampling rate of dataset
         bands : bands to evaluate feature selection over
         band_trims : amount of data to throw away after bandpassing
@@ -874,6 +877,7 @@ class reduction:
         grad_delay : coupling delay for gradient descent
         verbose : flag to show comments as it's processing
         """
+        self.N=N
         self.sr=sr
         self.bands=bands
         self.band_trims=band_trims
@@ -891,12 +895,21 @@ class reduction:
         self.grad_fit_coupling=grad_fit_coupling
         self.grad_delay=grad_delay
         self.verbose=verbose
+        
+        if self.seq_method=='SBS' or self.seq_method=='SFS':
+            self.floating = False
+        elif self.seq_method=='SBFS' or self.seq_method=='SFFS':
+            self.floating = True
+        else:
+            assert False, "Incorrect sequential method, must be SBS, SFS, SBFS, or SFFS"
+            
+        assert self.f_method=='exact' or self.f_method=='grad', "Incorrect global modulation method("+str(self.f_method)+"), must be exact or grad"
+            
 
     def feature_selector(
         self,
         soln,
-        x,
-        feature_N
+        x
     ):
         """
         Wrapper to compute feature selection.
@@ -909,7 +922,6 @@ class reduction:
         ----------
         soln : solutions with shape (num modes, num chan, time)
         x : true data with shape (num chan, time)
-        feature_N : amount of averaging to do on global modulation f
 
         Returns
         -------
@@ -917,45 +929,18 @@ class reduction:
         errors : list of errors for each step
         num_modes : number of modes for each step
         """
-        if self.f_method == "exact" or self.f_method == "grad":
-            if self.seq_method == "SBS":
-                self.floating = False
-                idxs, errors, num_modes, = self._SBS(
-                    soln,
-                    x,
-                    feature_N
-                )
-            elif self.seq_method == "SFS":
-                self.floating = False
-                idxs, errors, num_modes, = self._SFS(
-                    soln,
-                    x,
-                    feature_N
-                )
-            elif self.seq_method == "SBFS":
-                self.floating = True
-                idxs, errors, num_modes, = self._SBS(
-                    soln,
-                    x,
-                    feature_N
-                )
-            elif self.seq_method == "SFFS":
-                self.floating = True
-                idxs, errors, num_modes, = self._SFS(
-                    soln,
-                    x,
-                    feature_N
-                )
-            else:
-                idxs = []
-                errors = []
-                num_modes = 0
-                print("Incorrect sequential method, must be SBS, SFS, SBFS, or SFFS")
+        if self.seq_method=="SBS" or self.seq_method=="SBFS":
+            idxs, errors, num_modes, = self._SBS(
+                soln,
+                x
+            )
+        elif self.seq_method=="SFS" or self.seq_method=="SFFS":
+            idxs, errors, num_modes, = self._SFS(
+                soln,
+                x
+            )
         else:
-            idxs = []
-            errors = []
-            num_modes = 0
-            print("Incorrect global modulation method("+str(self.f_method)+"), must be exact or grad")
+            assert False, "Incorrect sequential method, must be SBS, SFS, SBFS, or SFFS"
 
         return idxs, errors, num_modes
 
@@ -963,8 +948,7 @@ class reduction:
     def _SBS(
         self,
         soln,
-        x,
-        N
+        x
     ):
         """
         Sequential methods: SBS and SBFS, described here:
@@ -976,7 +960,6 @@ class reduction:
         ----------
         soln : solutions with shape (num modes, num chan, time)
         x : true data with shape (num chan, time)
-        N : amount of averaging to do on global modulation f
 
         Returns
         -------
@@ -1004,7 +987,7 @@ class reduction:
                 soln,
                 self.grad_alpha,
                 self.grad_beta,
-                N,
+                self.N,
                 self.grad_lr,
                 self.grad_momentum,
                 self.maxiter,
@@ -1015,7 +998,7 @@ class reduction:
             f_hat = grad_f_amp(f_hat, soln, x)
         else:
             B, f = exact_Bf(x, soln)
-            f_hat = exact_f_from_Bf(B, f, N, var_thresh=self.exact_var_thresh)
+            f_hat = exact_f_from_Bf(B, f, self.N, var_thresh=self.exact_var_thresh)
 
         x_rec = get_reconstruction(soln, f_hat)
         total_error = [get_reconstruction_error(x, x_rec, self.sr, self.bands, self.band_trims)]
@@ -1051,7 +1034,7 @@ class reduction:
                         soln[idx_sub],
                         self.grad_alpha,
                         self.grad_beta,
-                        N,
+                        self.N,
                         self.grad_lr,
                         self.grad_momentum,
                         self.maxiter,
@@ -1063,7 +1046,7 @@ class reduction:
                 else:
                     f_sub = f[idx_sub]
                     B_sub = np.array([b[idx_sub] for b in B[idx_sub]])
-                    f_hat = exact_f_from_Bf(B_sub, f_sub, N, var_thresh=self.exact_var_thresh)
+                    f_hat = exact_f_from_Bf(B_sub, f_sub, self.N, var_thresh=self.exact_var_thresh)
 
                 x_rec = get_reconstruction(soln[idx_sub], f_hat)
                 error[j] = get_reconstruction_error(x, x_rec, self.sr, self.bands, self.band_trims)
@@ -1090,7 +1073,7 @@ class reduction:
                             soln[idx_sub],
                             self.grad_alpha,
                             self.grad_beta,
-                            N,
+                            self.N,
                             self.grad_lr,
                             self.grad_momentum,
                             self.maxiter,
@@ -1103,7 +1086,7 @@ class reduction:
                         f_sub = f[idx_sub]
                         B_sub = np.array([b[idx_sub] for b in B[idx_sub]])
                         f_hat = exact_f_from_Bf(
-                            B_sub, f_sub, N, var_thresh=self.exact_var_thresh
+                            B_sub, f_sub, self.N, var_thresh=self.exact_var_thresh
                         )
 
                     x_rec = get_reconstruction(soln[idx_sub], f_hat)
@@ -1131,8 +1114,7 @@ class reduction:
     def _SFS(
         self,
         soln,
-        x,
-        N
+        x
     ):
         """
         Sequential methods: SFS and SFFS, described here:
@@ -1144,7 +1126,6 @@ class reduction:
         ----------
         soln : solutions with shape (num modes, num chan, time)
         x : true data with shape (num chan, time)
-        N : amount of averaging to do on global modulation f
 
         Returns
         -------
@@ -1188,7 +1169,7 @@ class reduction:
                         soln[idx_sub],
                         self.grad_alpha,
                         self.grad_beta,
-                        N,
+                        self.N,
                         self.grad_lr,
                         self.grad_momentum,
                         self.maxiter,
@@ -1199,7 +1180,7 @@ class reduction:
                     f_hat = grad_f_amp(f_hat, soln[idx_sub], x)
                 else:
                     B_sub, f_sub = exact_Bf(x, soln[idx_sub])
-                    f_hat = exact_f_from_Bf(B_sub, f_sub, N, var_thresh=self.exact_var_thresh)
+                    f_hat = exact_f_from_Bf(B_sub, f_sub, self.N, var_thresh=self.exact_var_thresh)
 
                 x_rec = get_reconstruction(soln[idx_sub], f_hat)
                 error[j] = get_reconstruction_error(x, x_rec, self.sr, self.bands, self.band_trims)
@@ -1221,7 +1202,7 @@ class reduction:
                             soln[idx_sub],
                             self.grad_alpha,
                             self.grad_beta,
-                            N,
+                            self.N,
                             self.grad_lr,
                             self.grad_momentum,
                             self.maxiter,
@@ -1233,7 +1214,7 @@ class reduction:
                     else:
                         B_sub, f_sub = exact_Bf(x, soln[idx_sub])
                         f_hat = exact_f_from_Bf(
-                            B_sub, f_sub, N, var_thresh=self.exact_var_thresh
+                            B_sub, f_sub, self.N, var_thresh=self.exact_var_thresh
                         )
 
                     x_rec = get_reconstruction(soln[idx_sub], f_hat)
