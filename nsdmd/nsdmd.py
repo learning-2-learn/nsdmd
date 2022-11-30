@@ -11,6 +11,7 @@ class NSDMD:
         opt_rank=20,
         bandpass=None,
         bandpass_trim=500,
+        bandpass_rec_error=True,
         sim_thresh_freq=0.2,
         sim_thresh_phi_amp=0.95,
         sim_thresh_phi_phase=0.05,
@@ -41,6 +42,7 @@ class NSDMD:
         self.opt_rank = opt_rank
         self.bandpass = bandpass
         self.bandpass_trim = bandpass_trim
+        self.bandpass_rec_error = bandpass_rec_error
         self.sim_thresh_freq = sim_thresh_freq
         self.sim_thresh_phi_amp = sim_thresh_phi_amp
         self.sim_thresh_phi_phase = sim_thresh_phi_phase
@@ -169,6 +171,7 @@ class NSDMD:
             sr=sr,
             bands=self.bandpass,
             band_trims=self.bandpass_trim,
+            bandpass_rec_error=self.bandpass_rec_error,
             final_num=self.feature_final_num,
             seq_method=self.feature_seq_method,
             f_method=self.feature_f_method,
@@ -921,6 +924,7 @@ class reduction:
     sr : sampling rate of dataset,
     bands : bands to evaluate feature selection over,
     band_trims : amount of data to throw away after bandpassing
+    bandpass_rec_error : flag indicating bandpassing reconstruction error if bandpassing data earlier
     final_num : end number of modes to stop computing feature selection
     seq_method : method of sequential feature selection
     floating : bool indicating whether to include floating methods in sequential feature selection
@@ -949,6 +953,7 @@ class reduction:
         sr=1000,
         bands=None,
         band_trims=None,
+        bandpass_rec_error=True,
         final_num=None,
         seq_method="SBS",
         f_method="exact",
@@ -974,6 +979,7 @@ class reduction:
         sr : sampling rate of dataset
         bands : bands to evaluate feature selection over
         band_trims : amount of data to throw away after bandpassing
+        bandpass_rec_error : flag indicating bandpassing reconstruction error if bandpassing data earlier
         final_num : end number of modes to stop computing feature selection
         seq_method : method of sequential feature selection
         f_method : method of exact or gradient descent
@@ -994,6 +1000,7 @@ class reduction:
         self.sr=sr
         self.bands=bands
         self.band_trims=band_trims
+        self.bandpass_rec_error=bandpass_rec_error
         self.final_num=final_num
         self.seq_method=seq_method
         self.f_method=f_method
@@ -1121,6 +1128,7 @@ class reduction:
             self.sr,
             self.bands, 
             self.band_trims,
+            bandpass_rec=self.bandpass_rec_error,
             filter_options=self.filter_options
         )]
 
@@ -1176,6 +1184,7 @@ class reduction:
                     self.sr, 
                     self.bands,
                     self.band_trims,
+                    bandpass_rec=self.bandpass_rec_error,
                     filter_options=self.filter_options
                 )
 
@@ -1224,6 +1233,7 @@ class reduction:
                         self.sr,
                         self.bands, 
                         self.band_trims,
+                        bandpass_rec=self.bandpass_rec_error,
                         filter_options=self.filter_options
                     )
 
@@ -1324,6 +1334,7 @@ class reduction:
                     self.sr, 
                     self.bands, 
                     self.band_trims,
+                    bandpass_rec=self.bandpass_rec_error,
                     filter_options=self.filter_options
                 )
 
@@ -1366,6 +1377,7 @@ class reduction:
                         self.sr,
                         self.bands,
                         self.band_trims,
+                        bandpass_rec=self.bandpass_rec_error,
                         filter_options=self.filter_options
                     )
 
@@ -1633,7 +1645,7 @@ def get_reconstruction(soln, f):
     return x_rec
 
 
-def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None, filter_options={}):
+def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None, bandpass_rec=True, filter_options={}):
     """
     Calculates the reconstruction error from the original and reconstructed data matricies
 
@@ -1644,6 +1656,7 @@ def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None, filt
     sr : sampling rate of data
     bands : if list of bands, will calculate the cosine distance for each individual band and take the mean
     trim : amount of data to trim off after bandpassing the data
+    bandpass_rec : flag to bandpass reconstruction error
     filter_options : options for filtering the data
 
     Returns
@@ -1651,7 +1664,7 @@ def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None, filt
     error : error computed with cosine distance metric
     """
     # error = utils.cos_dist(x_rec.reshape((-1)), x_true.reshape((-1)))
-    if bands is None:
+    if bands is None or bandpass_rec==False:
         error = utils.cos_dist(x_rec.reshape((-1)), x_true.reshape((-1)))
     else:
         bands = np.array(bands)
