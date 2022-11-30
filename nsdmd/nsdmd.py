@@ -67,7 +67,10 @@ class NSDMD:
         self.filter_options = {
             'butter_order':5,
             'cheb_order':5,
-            'cheb_amp':1
+            'cheb_amp':1,
+            'opt_filter_type':'chebyshev',
+            'init_remove_filter_type':'chebyshev',
+            'rec_filter_type':'chebyshev'
         }
         filter_keys = np.array(list(self.filter_options.keys()))
         for key in filter_options:
@@ -443,11 +446,26 @@ class opt_dmd_windowed:
         t = t.copy()[self.trim:-self.trim]
         freqs = []
         phis = []
+        
+        filter_keys = np.array(list(self.filter_options.keys()))
+        if np.any(filter_keys=='opt_filter_type'):
+            filter_type = self.filter_options['opt_filter_type']
+        else:
+            filter_type = 'chebyshev'
+        
         for i, bp in enumerate(bp_ranges):
             if self.verbose:
                 print("Starting bandpass freq: " + str(bp[0]) + " - " + str(bp[1]) + " Hz")
 
-            x_filt = _bandpass_x(x, self.sr, bp[0], bp[1], trim=self.trim, filter_options=self.filter_options)
+            x_filt = _bandpass_x(
+                x, 
+                self.sr, 
+                bp[0], 
+                bp[1], 
+                bp_filter=filter_type,
+                trim=self.trim, 
+                filter_options=self.filter_options
+            )
             if self.initial_guess is not None:
                 guess = _bandpass_guess(bp[0], bp[1], self.rank, self.initial_guess[i])
             else:
@@ -799,10 +817,23 @@ def feature_init_remove(soln, freqs, x, sr, thresh=0.2, filter_options={}):
     f = np.ones((1, soln.shape[-1]))
     # f = grad_f_init(x,soln,0,2)
     
+    filter_keys = np.array(list(filter_options.keys()))
+    if np.any(filter_keys=='init_remove_filter_type'):
+        filter_type = filter_options['init_remove_filter_type']
+    else:
+        filter_type = 'chebyshev'
+    
     errors = np.empty((len(soln)))
     for i in range(len(soln)):
         soln_sub = soln[[i]]
-        x_sub = _bandpass_x(x, sr, np.max([freqs[i] - 1, 0.1]), freqs[i] + 1, filter_options=filter_options)
+        x_sub = _bandpass_x(
+            x, 
+            sr,
+            np.max([freqs[i] - 1, 0.1]), 
+            freqs[i] + 1, 
+            bp_filter=filter_type,
+            filter_options=filter_options
+        )
 
         f_sub = grad_f_amp(f, soln_sub, x_sub)
         # f_sub = np.array([f[i]])
@@ -1627,6 +1658,12 @@ def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None, filt
         assert len(bands.shape)==2
         assert bands.shape[1]==2
         
+        filter_keys = np.array(list(filter_options.keys()))
+        if np.any(filter_keys=='rec_filter_type'):
+            filter_type = filter_options['rec_filter_type']
+        else:
+            filter_type = 'chebyshev'
+        
         error_b = np.empty(len(bands))
         for i,bp in enumerate(bands):
             x_true_b = _bandpass_x(
@@ -1634,7 +1671,7 @@ def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None, filt
                 sr, 
                 bp[0], 
                 bp[1], 
-                bp_filter='chebyshev', 
+                bp_filter=filter_type, 
                 trim=None,
                 filter_options=filter_options
             )
@@ -1643,7 +1680,7 @@ def get_reconstruction_error(x_true, x_rec, sr=1000, bands=None, trim=None, filt
                 sr, 
                 bp[0],
                 bp[1], 
-                bp_filter='chebyshev',
+                bp_filter=filter_type,
                 trim=None,
                 filter_options=filter_options
             )
