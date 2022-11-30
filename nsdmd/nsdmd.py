@@ -4,6 +4,93 @@ from nsdmd import utils
 from scipy.stats import circmean
 
 class NSDMD:
+    """
+    Class for computing and finding NSDMD modes
+    
+    Parameters
+    ----------
+    opt_win : window length of each run of opt-dmd
+    opt_stride : stride length of each run of opt-dmd
+    opt_rank : rank of each run of opt-dmd
+    bandpass : None if no bandpassing, or list of bandpass ranges (e.g. [[1,4],[4,7],...])
+    bandpass_trim : amount of data to exclude after bandpassing
+    bandpass_rec_error : flag indicating whether or not to calculate reconstruction error with bandpassed data
+    sim_thresh_freq : frequency threshold. Any pair of frequencies with a smaller difference is 'similar'
+    sim_thresh_phi_amp : phi_amp threshold. Any pair with larger value is 'similar'
+        value is computed by cosine distance metric
+    sim_thresh_phi_phase : phi_phase threshold. Any pair with smaller value is 'similar'
+        value is computed by Mean Square Error
+    sim_group_size : int keeping only groups with a groupsize equal or larger than the threshold
+    drift_flag : flag indicating whether or not to allow similar solutions (S) to drift or 
+        randomly select one S from each group of similar S
+    drift_N : amount of temporal averaging of modes when solutions are allowed to drift
+    exact_var_thresh : variance threshold of eigenvalues in exact method to not be considered noise
+    feature_init : threshold for choosing modes that best reconstruct the data
+        either integer with value >= 1 and < num modes 
+        (this keeps that many modes with best reconstruction) 
+        or float with value between 0 and 1 
+        (this keeps all modes above this cosine distance)
+    feature_N : amount of averaging to do on global modulation f during feature selection
+    feature_seq_method : string indicating sequential feature selection method
+        can be 'SBS', 'SBFS', 'SFS', or 'SFFS'
+    feature_f_method : string indicating f-fitting method
+        can be 'exact' or 'grad'
+    feature_maxiter : number of iterations for gradient descent method if used during feature selection
+    feature_final_num : final number of modes to compute during sequential feature selection method
+        can be None as well, indicating no early stopping
+    feature_maxiter_float : int to  stop sequential selector from repeating too many times when 
+        'SBFS' or 'SFFS' is used. Number is the number of times a particular number of modes 
+        is allowed to repeat
+    grad_alpha : number indicating strength of l1 regularization during gradient descent
+    grad_beta : number or array with length 2N+1 indicating strength of temporal smoothing in gradient descent
+        if single number, beta will turn into array with length 2N+1
+    grad_N : number of timepoints to smooth over during gradient descent
+    grad_lr : learning rate of gradient descent
+    grad_momentum : momentum of gradient descent
+    grad_maxiter : total number of iterations during gradient descent
+    grad_fit_coupling : flag telling whether or not to fit time delays with individual channels
+    grad_init_lowpass : value of initial guess lowpass (or None if no low pass)
+    verbose : flag to say whether to show comments
+    filter_options : dict of options for how to filter data. Options include
+        'butter_order' : order of butterpass filter
+        'cheb_order' : order of type 1 chebyshev filter
+        'cheb_amp' : passband amplitude gain of chebyshev filter
+        'opt_filter_type' : filter type to be used during opt-dmd
+        'init_remove_filter_type' : filter type to be used during initial removal of modes
+        'rec_filter_type' : filter type to be used during reconstruction of the data.
+    
+    Attributes
+    ----------
+    freqs_ : all computed frequencies for (number of windows, rank)
+    phis_ : all computed complex phis for (number of windows, rank, number of channels)
+    windows_ : indicies into t for each window
+    offsets_ : offsets of each window in time domain
+    errors_ : reconstruction errors for each number of modes used for reconstruction
+    num_modes_ : number of modes for each sequential step of feature selection
+    idx_red_ : indicies for each sequential step of feature selection
+    idx_hat_ : chosen or best fit set of indicies for minimal reconstruction error
+    freq_mean_ : frequencies for each mode (averaged across time)
+    phi_mean_ : comples spatial modes phi (averaged across time)
+    delay_hat_ : calculated temporal delays for each channel (in terms of timesteps)
+    f_hat_ : calculated f(s) for best set of modes
+    
+    Methods
+    -------
+    fit(x, t, sr, initial_freq_guess=None)
+        fits NSDMD modes
+    fit_opt(x, t, sr, initial_freq_guess=None)
+        fits OPT-DMD across every window of the dataset
+    set_opt_values(freqs, phis, windows, offsets)
+        overrides previous calculated modes
+    fit_reduction(x, t_len, sr)
+        fits the reduction and feature selection procedure
+    fit_f(x, t_len, sr, idx_num)
+        fits f(s) for the desired modes
+    transform(x, t_len, sr)
+        computes the reconstruction of x
+    get_freq_and_phi(t_len, sr)
+        retrieves the non-temporally averaged frequencies and spatial modes.
+    """
     def __init__(
         self,
         opt_win=500,
