@@ -4,4 +4,4 @@ Many physical processes display complex high-dimensional time-varying behavior, 
 
 This repository provides a Python implementations of NS-DMD along with example code.
 
-To start, I recommend using examples/fit_demo.ipynb. Examples from the manuscript, including supplementary ones, are included.
+To start, I recommend using examples/fit_demo.ipynb. Examples from the manuscript, including supplementary ones, are included in the examples folder.
