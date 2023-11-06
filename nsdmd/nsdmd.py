@@ -477,9 +477,6 @@ class opt_dmd_windowed:
         phis : complex spatial modes with shape (number of windows, rank, number of channels)
         windows : exact windows used, for testing purposes
         """
-        # windows = np.array(
-            # [np.arange(i, i + self.w_len) for i in np.arange(0, x.shape[-1] - self.w_len + 1, self.stride)]
-        # )
         windows = [np.arange(i, i + self.w_len) for i in np.arange(0, x.shape[-1] - self.w_len + 1, self.stride)]
         if windows[-1][-1]!=x.shape[-1]-1:
             warnings.warn(
