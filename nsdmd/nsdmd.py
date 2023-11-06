@@ -2,6 +2,13 @@ import numpy as np
 from nsdmd import optdmd
 from nsdmd import utils
 from scipy.stats import circmean
+import warnings
+
+def custom_formatwarning(msg, *args, **kwargs):
+    # ignore everything except the message
+    return str(msg) + '\n'
+
+warnings.formatwarning = custom_formatwarning
 
 class NSDMD:
     """
@@ -470,9 +477,20 @@ class opt_dmd_windowed:
         phis : complex spatial modes with shape (number of windows, rank, number of channels)
         windows : exact windows used, for testing purposes
         """
-        windows = np.array(
-            [np.arange(i, i + self.w_len) for i in np.arange(0, x.shape[-1] - self.w_len + 1, self.stride)]
-        )
+        # windows = np.array(
+            # [np.arange(i, i + self.w_len) for i in np.arange(0, x.shape[-1] - self.w_len + 1, self.stride)]
+        # )
+        windows = [np.arange(i, i + self.w_len) for i in np.arange(0, x.shape[-1] - self.w_len + 1, self.stride)]
+        if windows[-1][-1]!=x.shape[-1]-1:
+            warnings.warn(
+                '\nUserWarning:\
+                \nWindow length plus stride does not cover time region of interest,\
+                \nAdding extra window to the end that arbitrarily overlaps previous windows...\
+                \nRecommended to adjust the stride or time range such that the final window naturally ends at the end of the dataset\n'
+            )
+            windows.append(np.arange(x.shape[-1]-self.w_len, x.shape[-1]))
+        windows = np.array(windows)
+
         freqs = np.empty((len(windows), self.rank))
         phis = np.empty((len(windows), self.rank, len(x)), dtype=complex)
         
