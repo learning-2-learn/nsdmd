@@ -800,6 +800,7 @@ def get_soln(freqs, phis, idxs, t_len, windows, N, sr):
             )[:, 0]
             temp_ii = np.argwhere(loc_len == i)[:, 0][temp_i]
             temp_pa = np.mean(np.abs(phis_init[:, temp]), axis=1)
+            temp_pa /= (np.sum(np.abs(temp_pa)**2, axis=1)**0.5)[:,None]
             temp_pp = circmean(np.angle(phis_init[:, temp]), axis=1)
             phis_all[:, temp_ii] = (temp_pa * np.exp(1j * temp_pp))[:, None, :]
 
