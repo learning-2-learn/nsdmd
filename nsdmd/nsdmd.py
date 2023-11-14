@@ -1875,22 +1875,22 @@ def _group_by_freq_phi(freq, phi_amp, phi_phase, thresh_freq=0.2, thresh_phi_amp
 ######################### Development/doesn't currently work
 
 
-def find_lag(x, f, soln, t_delay, periods, N, edge_len):
-    errors = np.empty((soln.shape[0], 2 * N + 1, soln.shape[1]))
-    for i in range(soln.shape[0]):
-        for j in np.arange(-N, N + 1):
-            f_temp = f.copy()
-            for k in range(soln.shape[1]):
-                idx = (
-                    int(round(j * periods[i]))
-                    + t_delay[i, k]
-                    + np.arange(soln.shape[2])
-                )
-                idx[idx < 0] = 0
-                idx[idx >= soln.shape[2]] = soln.shape[2] - 1
-                f_temp[i, k] = f[i, k, idx]
-            x_rec = nsdmd.get_reconstruction(
-                soln[:, :, edge_len:-edge_len], f_temp[:, :, edge_len:-edge_len]
-            )
-            errors[i, j] = np.mean((x_rec - x[:, edge_len:-edge_len]) ** 2, axis=1)
-    return errors
+# def find_lag(x, f, soln, t_delay, periods, N, edge_len):
+#     errors = np.empty((soln.shape[0], 2 * N + 1, soln.shape[1]))
+#     for i in range(soln.shape[0]):
+#         for j in np.arange(-N, N + 1):
+#             f_temp = f.copy()
+#             for k in range(soln.shape[1]):
+#                 idx = (
+#                     int(round(j * periods[i]))
+#                     + t_delay[i, k]
+#                     + np.arange(soln.shape[2])
+#                 )
+#                 idx[idx < 0] = 0
+#                 idx[idx >= soln.shape[2]] = soln.shape[2] - 1
+#                 f_temp[i, k] = f[i, k, idx]
+#             x_rec = nsdmd.get_reconstruction(
+#                 soln[:, :, edge_len:-edge_len], f_temp[:, :, edge_len:-edge_len]
+#             )
+#             errors[i, j] = np.mean((x_rec - x[:, edge_len:-edge_len]) ** 2, axis=1)
+#     return errors
