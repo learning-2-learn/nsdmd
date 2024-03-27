@@ -230,12 +230,7 @@ def make_network(freq, t_len, phi_amp, phi_phase, sr=1000, time_mod=0, coupling=
     """
     assert len(phi_amp) == len(phi_phase), "Phi lengths not equal"
 
-    if not (
-        type(freq) == np.float64
-        or type(freq) == np.int64
-        or type(freq) == float
-        or type(freq) == int
-    ):
+    if isinstance(freq, (np.ndarray, list)):
         assert len(freq) == 3 * t_len, "Length of frequency term not correct"
         freq = np.insert(freq[:-1], 0, 0)
     else:
