@@ -177,6 +177,7 @@ class NSDMD:
             self.filter_options[key] = filter_options[key]
 
     def fit(self, x, t, sr, initial_freq_guess=None):
+        assert x.shape[1]==len(t), "Shape of x and t do not match."
         self.fit_opt(x, t, sr, initial_freq_guess=initial_freq_guess)
         if self.bandpass is not None:
             x = x[:,self.bandpass_trim:self.bandpass_trim+self.windows_[-1,0]+self.opt_win]
@@ -189,6 +190,7 @@ class NSDMD:
         return self
 
     def fit_opt(self, x, t, sr, initial_freq_guess=None):
+        assert x.shape[1]==len(t), "Shape of x and t do not match."
         if self.verbose:
             print("Starting OPT-DMD...")
             
@@ -214,6 +216,7 @@ class NSDMD:
         return self
 
     def fit_reduction(self, x, t_len, sr):
+        assert x.shape[1]==t_len, "Shape of x and t do not match."
         if self.verbose:
             print("Gathering modes...")
         group_idx = group_by_similarity(
@@ -295,6 +298,7 @@ class NSDMD:
         return self
 
     def fit_f(self, x, t_len, sr, idx_num):
+        assert x.shape[1]==t_len, "Shape of x and t do not match."
         if np.any(self.num_modes_ == idx_num):
             self.idx_hat_ = self.idx_red_[
                 np.argwhere(self.num_modes_ == idx_num)[-1, 0]
