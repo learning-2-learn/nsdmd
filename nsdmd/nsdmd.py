@@ -131,6 +131,9 @@ class NSDMD:
         verbose=False,
         filter_options={}
     ):
+        if opt_stride > opt_win:
+            warnings.warn('opt_stride < opt_win not maintained, setting opt_stride=opt_win...')
+            opt_stride = opt_win
         self.opt_win = opt_win
         self.opt_stride = opt_stride
         self.opt_rank = opt_rank
